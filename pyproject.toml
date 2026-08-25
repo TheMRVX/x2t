@@ -7,7 +7,7 @@ name = "x2t"
 version = "0.1.0"
 description = "High-performance, multi-media downloader engine for Twitter / X posts"
 authors = [
-    { name = "TheMRVX Marvi", email = "TheMRVX@users.noreply.github.com" },
+    { name = "TheMRVX" },
     { name = "Antigravity (Google DeepMind)" },
 ]
 license = { text = "AGPL-3.0-or-later" }
