@@ -26,8 +26,9 @@
   - Automatic progress card pinned to the top of the chat with live post/file counters and a **`🛑 Stop / Cancel`** button.
 - **🛡️ NSFW & Sensitive Content Resolution:** Custom resolver backend with persistent cookie management (`/set_cookie`) to unlock age-restricted and sensitive media seamlessly.
 - **📦 Multi-Media Albums (MediaGroups):** Automatically bundles multi-photo/video tweets (up to 4 items) into clean native Telegram albums.
+- **⚡ In-Memory TTL Caching:** Smart 5-minute cache avoids duplicate API requests and prevents Twitter rate limits on viral posts.
 - **🧹 Zero-Waste Disk Lifecycle:** Downloaded temporary media files are automatically purged from disk immediately after delivery.
-- **📊 SQLite Database & Admin Dashboard:** Tracks active users, download statistics, and includes `/stats` and `/broadcast` admin tools.
+- **📊 SQLite Database (WAL Mode) & Admin Dashboard:** Persistent async database with WAL concurrency, download history tracking, `/stats`, `/history`, and `/broadcast` admin tools.
 
 ---
 
@@ -185,10 +186,11 @@ asyncio.run(stream_profile())
 | Command | Role | Description |
 | :--- | :---: | :--- |
 | `/start` | User | Welcome screen, bot feature overview, and instructions. |
+| `/history` | User | View recent 5 downloaded tweets with direct post links. |
 | `/help` | User | Usage guide and troubleshooting tips. |
 | `/about` | User | Version, architecture, and technology stack information. |
 | `/mode [private/public]` | Admin | View or dynamically toggle between Private and Public access mode. |
-| `/stats` | Admin | Total registered users, total downloaded files, and 24h active users. |
+| `/stats` | Admin | Total registered users, total downloads, 24h active users, and token health. |
 | `/allow <user_id>` | Admin | Authorize a specific Telegram User ID when in Private mode. |
 | `/disallow <user_id>` | Admin | Revoke access for a specific Telegram User ID. |
 | `/set_cookie <auth_token>` | Admin | Dynamically set or update Twitter `auth_token` for NSFW timelines. |
