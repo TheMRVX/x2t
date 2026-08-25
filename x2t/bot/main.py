@@ -1,4 +1,4 @@
-"""Entry point for x2t Telegram Bot with resilient logging and global error handling."""
+"""Entry point for x2t Telegram Bot with resilient logging, persistent SQLite, and token health monitoring."""
 
 import asyncio
 import os
@@ -19,6 +19,7 @@ from x2t.bot.middlewares import (
     error_router,
 )
 from x2t.bot.services.mtproto_client import mtproto_client
+from x2t.core.profile_extractor import profile_extractor
 from x2t.logger import get_logger, setup_logging
 
 # 1. Initialize Colorized & Sanitized Logging
@@ -33,10 +34,11 @@ async def setup_bot_commands(bot: Bot):
     """Register menu commands list with Telegram API (displayed next to keyboard)."""
     commands = [
         BotCommand(command="start", description="🚀 شروع به کار و راهنمای ربات"),
+        BotCommand(command="history", description="📜 مشاهده تاریخچه آخرین دانلودها"),
         BotCommand(command="help", description="📖 راهنمای کامل استفاده و فیلترها"),
         BotCommand(command="about", description="ℹ️ درباره سیستم و موتور دانلود x2t"),
         BotCommand(command="mode", description="⚙️ مشاهده و تغییر حالت خصوصی/عمومی (ادمین)"),
-        BotCommand(command="stats", description="📊 آمار دانلودها و کاربران فعال (ادمین)"),
+        BotCommand(command="stats", description="📊 آمار دانلودها و وضعیت توییتر (ادمین)"),
         BotCommand(command="allow", description="✅ افزودن کاربر به لیست مجاز (ادمین)"),
         BotCommand(command="disallow", description="🚫 لغو دسترسی کاربر (ادمین)"),
         BotCommand(command="set_cookie", description="🍪 تنظیم کوکی توییتر برای اکانت‌های حساس (ادمین)"),
@@ -57,46 +59,59 @@ async def main():
 
     logger.info("Initializing x2t Telegram Bot...")
 
-    # 1. Initialize Database
+    # 1. Initialize Database with persistent connection and WAL mode
     db = Database(db_path=bot_config.db_path)
     await db.init_db()
-    logger.info(f"Database initialized at {bot_config.db_path}")
+    logger.info(f"Database initialized at {bot_config.db_path} (WAL mode enabled)")
 
     # 2. Ensure temp and logs directories exist
     bot_config.temp_download_dir.mkdir(parents=True, exist_ok=True)
     Path("logs").mkdir(parents=True, exist_ok=True)
 
-    # 3. Load Twitter Auth Token if configured
-    if bot_config.twitter_auth_token:
-        from x2t.core.profile_extractor import profile_extractor
-        profile_extractor.set_twitter_auth_token(bot_config.twitter_auth_token, bot_config.twitter_ct0)
-        logger.info("Configured Twitter auth_token from settings.")
+    # 3. Load dynamic settings from DB (if previously customized by admin)
+    saved_mode = await db.get_setting("is_private")
+    if saved_mode is not None:
+        bot_config.is_private = (saved_mode.lower() == "true")
+        logger.info(f"Loaded persistent bot mode from DB: is_private={bot_config.is_private}")
 
-    # 4. Start MTProto Client for 2GB uploads if api_id/api_hash configured
+    saved_token = await db.get_setting("twitter_auth_token")
+    saved_ct0 = await db.get_setting("twitter_ct0")
+    if saved_token:
+        profile_extractor.set_twitter_auth_token(saved_token, saved_ct0)
+        logger.info("Loaded Twitter auth_token from persistent DB settings.")
+    elif bot_config.twitter_auth_token:
+        profile_extractor.set_twitter_auth_token(bot_config.twitter_auth_token, bot_config.twitter_ct0)
+        logger.info("Configured Twitter auth_token from environment settings.")
+
+    # 4. Check and log Twitter session health status
+    _, health_msg = profile_extractor.check_auth_token_health()
+    logger.info(f"Twitter session health check: {health_msg}")
+
+    # 5. Start MTProto Client for 2GB uploads if api_id/api_hash configured
     if bot_config.has_mtproto:
         await mtproto_client.start()
 
-    # 5. Create Bot and Dispatcher
+    # 6. Create Bot and Dispatcher
     bot = Bot(
         token=bot_config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
 
-    # 6. Register Bot Menu Commands Button
+    # 7. Register Bot Menu Commands Button
     await setup_bot_commands(bot)
 
-    # 7. Register Middlewares
+    # 8. Register Middlewares
     dp.update.outer_middleware(AccessControlMiddleware())
     dp.message.middleware(ThrottlingMiddleware(limit=bot_config.rate_limit_seconds))
     dp.message.middleware(UserTrackerMiddleware(db=db))
     dp.callback_query.middleware(UserTrackerMiddleware(db=db))
 
-    # 8. Register Routers and Global Error Boundary
+    # 9. Register Routers and Global Error Boundary
     dp.include_router(setup_routers())
     dp.include_router(error_router)
 
-    # 9. Start Polling
+    # 10. Start Polling
     logger.info("Starting bot polling...")
     try:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -104,7 +119,8 @@ async def main():
     finally:
         await mtproto_client.stop()
         await bot.session.close()
-        logger.info("Bot stopped cleanly.")
+        await db.close()
+        logger.info("Bot stopped cleanly and database connections closed.")
 
 
 if __name__ == "__main__":

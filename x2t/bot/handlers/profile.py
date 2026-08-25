@@ -52,7 +52,7 @@ def _format_profile_card(info: ProfileInfo) -> str:
 
 
 @router.message(F.text)
-async def handle_profile_or_text(message: Message):
+async def handle_profile_or_text(message: Message, db: Database):
     """Detect profile URLs / @handles and display interactive filter panel."""
     text = message.text.strip()
     user_id = message.from_user.id if message.from_user else 0
@@ -70,21 +70,33 @@ async def handle_profile_or_text(message: Message):
     try:
         # Fetch profile metadata
         info = profile_extractor.get_profile_info(username)
-        if not info.rest_id and info.username == username and info.name == username and not info.followers_count:
-            # Check if username is invalid
-            pass
 
-        # Initialize default filter state (Strict Original Only mode, Limit 0 = Unlimited/All)
+        # Load persisted filter preferences from DB or fallback to default
         state_key = _get_state_key(user_id, info.username)
-        options = ProfileFilterOptions(
-            include_videos=True,
-            include_photos=True,
-            include_gifs=True,
-            include_retweets=False,        # Default: Exclude Retweets
-            include_sourced_media=False,   # Default: Exclude 'From @other'
-            include_quotes=False,          # Default: Exclude Quote tweets
-            limit=0,                       # Default: 0 = Unlimited / All available
-        )
+        saved_json = await db.get_profile_filter(user_id, info.username)
+        if saved_json:
+            try:
+                options = ProfileFilterOptions.model_validate_json(saved_json)
+            except Exception:
+                options = ProfileFilterOptions(
+                    include_videos=True,
+                    include_photos=True,
+                    include_gifs=True,
+                    include_retweets=False,
+                    include_sourced_media=False,
+                    include_quotes=False,
+                    limit=0,
+                )
+        else:
+            options = ProfileFilterOptions(
+                include_videos=True,
+                include_photos=True,
+                include_gifs=True,
+                include_retweets=False,        # Default: Exclude Retweets
+                include_sourced_media=False,   # Default: Exclude 'From @other'
+                include_quotes=False,          # Default: Exclude Quote tweets
+                limit=0,                       # Default: 0 = Unlimited / All available
+            )
         user_profile_states[state_key] = options
 
         card_text = _format_profile_card(info)
@@ -115,13 +127,14 @@ async def handle_profile_or_text(message: Message):
 # =========================================================================
 
 @router.callback_query(F.data.startswith("prof:tog_"))
-async def cb_toggle_option(callback: CallbackQuery):
+async def cb_toggle_option(callback: CallbackQuery, db: Database):
     """Handle checkbox toggle buttons."""
     parts = callback.data.split(":")
     action = parts[1]
     username = parts[2]
+    user_id = callback.from_user.id
 
-    state_key = _get_state_key(callback.from_user.id, username)
+    state_key = _get_state_key(user_id, username)
     options = user_profile_states.get(state_key, ProfileFilterOptions())
 
     if action == "tog_v":
@@ -138,6 +151,7 @@ async def cb_toggle_option(callback: CallbackQuery):
         options.include_quotes = not options.include_quotes
 
     user_profile_states[state_key] = options
+    await db.save_profile_filter(user_id, username, options.model_dump_json())
     new_markup = get_profile_settings_keyboard(username, options)
 
     await callback.message.edit_reply_markup(reply_markup=new_markup)
@@ -145,10 +159,11 @@ async def cb_toggle_option(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("prof:cycle_lim:"))
-async def cb_cycle_limit(callback: CallbackQuery):
+async def cb_cycle_limit(callback: CallbackQuery, db: Database):
     """Cycle batch limit: 0 (All) -> 10 -> 25 -> 50 -> 100 -> 0."""
     username = callback.data.split(":")[2]
-    state_key = _get_state_key(callback.from_user.id, username)
+    user_id = callback.from_user.id
+    state_key = _get_state_key(user_id, username)
     options = user_profile_states.get(state_key, ProfileFilterOptions())
 
     limits = [0, 10, 25, 50, 100]
@@ -156,7 +171,12 @@ async def cb_cycle_limit(callback: CallbackQuery):
     options.limit = limits[(curr_idx + 1) % len(limits)]
 
     user_profile_states[state_key] = options
+    await db.save_profile_filter(user_id, username, options.model_dump_json())
     new_markup = get_profile_settings_keyboard(username, options)
+
+    limit_desc = "♾️ همه (تا آخرین پست)" if options.limit == 0 else f"{options.limit} پست"
+    await callback.message.edit_reply_markup(reply_markup=new_markup)
+    await callback.answer(f"تعداد تنظیم شد روی: {limit_desc}")
 
     limit_desc = "♾️ همه (تا آخرین پست)" if options.limit == 0 else f"{options.limit} پست"
     await callback.message.edit_reply_markup(reply_markup=new_markup)

@@ -76,6 +76,22 @@ class ProfileExtractor:
         """True if auth_token is configured."""
         return bool(self._auth_token)
 
+    def check_auth_token_health(self) -> tuple[bool, str]:
+        """Check whether configured auth_token is currently valid and active."""
+        if not self._auth_token:
+            return False, "⚪ تنظیم نشده (حالت مهمان / Guest)"
+
+        try:
+            r = self.client.get("https://x.com/home", follow_redirects=False)
+            if r.status_code == 200 or (r.status_code in (301, 302) and "login" not in r.headers.get("location", "").lower()):
+                return True, "✅ نشست توییتر معتبر و فعال است (Full Access)"
+            elif r.status_code in (401, 403) or "login" in r.headers.get("location", "").lower():
+                return False, "⚠️ توکن منقضی شده یا نامعتبر است (نیاز به /set_cookie جدید)"
+            else:
+                return True, f"✅ فعال (کد وضعیت: {r.status_code})"
+        except Exception as e:
+            return False, f"⚠️ خطای ارتباط در بررسی سلامت توکن: {str(e)[:50]}"
+
     def _load_cookies(self):
         """Load cookies from cookies.txt or environment if exists."""
         if self.cookies_file and Path(self.cookies_file).exists():

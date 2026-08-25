@@ -29,3 +29,6 @@ async def test_database_lifecycle(tmp_path):
     # 5. Check user IDs for broadcast
     user_ids = await db.get_all_user_ids()
     assert set(user_ids) == {1001, 1002}
+
+    # 6. Close database connection
+    await db.close()

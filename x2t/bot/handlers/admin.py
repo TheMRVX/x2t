@@ -1,4 +1,4 @@
-"""Admin commands and management handlers."""
+"""Admin commands and management handlers with persistent settings and token health checks."""
 
 import asyncio
 from aiogram import Router
@@ -19,25 +19,28 @@ def is_admin(user_id: int) -> bool:
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message, db: Database):
-    """Display overall bot stats to admin."""
+    """Display overall bot stats and Twitter session health to admin."""
     if not is_admin(message.from_user.id):
         return
 
     stats = await db.get_stats()
     mode_str = "🔒 خصوصی (Private)" if bot_config.is_private else "🌐 عمومی (Public)"
+    _, health_str = profile_extractor.check_auth_token_health()
+
     text = (
         "📊 <b>آمار سیستم ربات x2t:</b>\n\n"
         f"⚙️ <b>وضعیت دسترسی ربات:</b> {mode_str}\n"
         f"👥 <b>تعداد کل کاربران:</b> {stats['total_users']:,}\n"
         f"📥 <b>تعداد کل فایل‌های دانلود شده:</b> {stats['total_downloads']:,}\n"
-        f"⚡ <b>کاربران فعال ۲۴ ساعت گذشته:</b> {stats['active_24h']:,}"
+        f"⚡ <b>کاربران فعال ۲۴ ساعت گذشته:</b> {stats['active_24h']:,}\n\n"
+        f"🍪 <b>وضعیت نشست توییتر (Auth Token):</b>\n{health_str}"
     )
     await message.reply(text, parse_mode="HTML")
 
 
 @router.message(Command("mode"))
-async def cmd_mode(message: Message):
-    """Toggle or show Public/Private access mode."""
+async def cmd_mode(message: Message, db: Database):
+    """Toggle or show Public/Private access mode and persist in DB."""
     if not is_admin(message.from_user.id):
         return
 
@@ -56,10 +59,12 @@ async def cmd_mode(message: Message):
     target_mode = parts[1].lower()
     if target_mode in ("private", "priv", "close", "off"):
         bot_config.is_private = True
-        await message.reply("🔒 <b>حالت ربات به «خصوصی (Private)» تغییر یافت.</b>\nاکنون فقط ادمین‌ها و کاربران مجاز می‌توانند از ربات استفاده کنند.", parse_mode="HTML")
+        await db.set_setting("is_private", "true")
+        await message.reply("🔒 <b>حالت ربات به «خصوصی (Private)» تغییر یافت.</b>\nتنظیمات در پایگاه داده ذخیره شد.", parse_mode="HTML")
     elif target_mode in ("public", "pub", "open", "on"):
         bot_config.is_private = False
-        await message.reply("🌐 <b>حالت ربات به «عمومی (Public)» تغییر یافت.</b>\nاکنون همه کاربران تلگرام می‌توانند از ربات استفاده کنند.", parse_mode="HTML")
+        await db.set_setting("is_private", "false")
+        await message.reply("🌐 <b>حالت ربات به «عمومی (Public)» تغییر یافت.</b>\nتنظیمات در پایگاه داده ذخیره شد.", parse_mode="HTML")
     else:
         await message.reply("⚠️ لطفاً <code>/mode private</code> یا <code>/mode public</code> را وارد کنید.", parse_mode="HTML")
 
@@ -101,8 +106,8 @@ async def cmd_disallow_user(message: Message):
 
 
 @router.message(Command("set_cookie"))
-async def cmd_set_cookie(message: Message):
-    """Set Twitter auth_token and ct0 cookies dynamically for NSFW/18+ accounts."""
+async def cmd_set_cookie(message: Message, db: Database):
+    """Set Twitter auth_token and ct0 cookies dynamically for NSFW/18+ accounts with persistence."""
     if not is_admin(message.from_user.id):
         return
 
@@ -120,9 +125,14 @@ async def cmd_set_cookie(message: Message):
     ct0 = parts[2].strip() if len(parts) > 2 else None
 
     profile_extractor.set_twitter_auth_token(auth_token, ct0)
+    await db.set_setting("twitter_auth_token", auth_token)
+    if ct0:
+        await db.set_setting("twitter_ct0", ct0)
+
+    is_valid, health_msg = profile_extractor.check_auth_token_health()
     await message.reply(
-        "✅ <b>کوکی‌های توییتر با موفقیت در سیستم تنظیم شدند!</b>\n\n"
-        "اکنون تایم‌لاین تمام اکانت‌های محدودشده و حساس (NSFW) نیز قابل دانلود است.",
+        "✅ <b>کوکی‌های توییتر با موفقیت تنظیم و ذخیره شدند!</b>\n\n"
+        f"📊 <b>وضعیت اعتبارسنجی:</b> {health_msg}",
         parse_mode="HTML",
     )
 
