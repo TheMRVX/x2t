@@ -1,9 +1,9 @@
-"""Profile timeline and media extraction coordinator with granular content filtering."""
+"""Profile timeline and media extraction coordinator with cursor pagination and granular content filtering."""
 
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from x2t.config import config
@@ -27,7 +27,7 @@ USER_TWEETS_QUERY_ID = "V7H0Ap3_Hh2FyS75OCDO3Q"
 
 
 class ProfileExtractor:
-    """Extracts profile metadata and timelines with multi-criteria attribution filtering."""
+    """Extracts profile metadata and timelines with multi-criteria attribution filtering and cursor pagination."""
 
     def __init__(self, cookies_file: Optional[str] = None):
         self.cookies_file = cookies_file or config.cookies_file
@@ -191,68 +191,133 @@ class ProfileExtractor:
 
         return headers
 
+    async def iter_profile_media_tweets_stream(
+        self, username: str, options: ProfileFilterOptions
+    ) -> AsyncGenerator[ProfileTweetItem, None]:
+        """Asynchronously stream and yield filtered media posts with full cursor pagination."""
+        clean_user = username.lstrip("@").strip()
+        profile_info = self.get_profile_info(clean_user)
+        user_id = profile_info.rest_id
+
+        if not user_id:
+            logger.warning(f"No rest_id for user {clean_user}")
+            return
+
+        cursor = None
+        seen_tweet_ids = set()
+        matched_count = 0
+
+        while True:
+            raw_batch, next_cursor = self._fetch_timeline_page(user_id, profile_info, cursor=cursor)
+            if not raw_batch:
+                break
+
+            for p in raw_batch:
+                if p.tweet_id in seen_tweet_ids:
+                    continue
+                seen_tweet_ids.add(p.tweet_id)
+
+                # 1. Filter: Retweets
+                if p.is_retweet and not options.include_retweets:
+                    continue
+
+                # 2. Filter: Quote Tweets
+                if p.is_quote and not options.include_quotes:
+                    continue
+
+                # 3. Filter: Sourced Media
+                if p.source_user and p.source_user.lower() != clean_user.lower() and not options.include_sourced_media:
+                    continue
+
+                # 4. Filter: Media Types
+                allowed_items: List[MediaItem] = []
+                for item in p.media_items:
+                    if item.type == MediaType.VIDEO and options.include_videos:
+                        allowed_items.append(item)
+                    elif item.type == MediaType.PHOTO and options.include_photos:
+                        allowed_items.append(item)
+                    elif item.type == MediaType.GIF and options.include_gifs:
+                        allowed_items.append(item)
+
+                if not allowed_items:
+                    continue
+
+                p.media_items = allowed_items
+                matched_count += 1
+                yield p
+
+                # Stop if user set a positive limit and reached it
+                if options.limit > 0 and matched_count >= options.limit:
+                    return
+
+            if not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+
     def fetch_profile_media_tweets(
         self, username: str, options: ProfileFilterOptions
     ) -> ProfileMediaResult:
-        """Fetch and filter recent media tweets for a user account."""
+        """Synchronously fetch matching media tweets up to the limit (or all)."""
         clean_user = username.lstrip("@").strip()
         profile_info = self.get_profile_info(clean_user)
+        user_id = profile_info.rest_id
 
-        raw_posts = self._fetch_recent_posts_raw(profile_info, limit=options.limit * 3)
         filtered_tweets: List[ProfileTweetItem] = []
+        if not user_id:
+            return ProfileMediaResult(profile=profile_info, filter_options=options, tweets=[])
 
-        for p in raw_posts:
-            # 1. Filter: Retweets / Reposts
-            if p.is_retweet and not options.include_retweets:
-                logger.debug(f"Skipping retweet {p.tweet_id}")
-                continue
+        cursor = None
+        seen_tweet_ids = set()
 
-            # 2. Filter: Quote Tweets
-            if p.is_quote and not options.include_quotes:
-                logger.debug(f"Skipping quote tweet {p.tweet_id}")
-                continue
-
-            # 3. Filter: Third-party sourced media ('From @other')
-            if p.source_user and p.source_user.lower() != clean_user.lower() and not options.include_sourced_media:
-                logger.debug(f"Skipping sourced media tweet {p.tweet_id} (source: @{p.source_user})")
-                continue
-
-            # 4. Filter: Media Types
-            allowed_items: List[MediaItem] = []
-            for item in p.media_items:
-                if item.type == MediaType.VIDEO and options.include_videos:
-                    allowed_items.append(item)
-                elif item.type == MediaType.PHOTO and options.include_photos:
-                    allowed_items.append(item)
-                elif item.type == MediaType.GIF and options.include_gifs:
-                    allowed_items.append(item)
-
-            if not allowed_items:
-                continue
-
-            p.media_items = allowed_items
-            filtered_tweets.append(p)
-
-            if len(filtered_tweets) >= options.limit:
+        while True:
+            raw_batch, next_cursor = self._fetch_timeline_page(user_id, profile_info, cursor=cursor)
+            if not raw_batch:
                 break
 
-        return ProfileMediaResult(
-            profile=profile_info,
-            filter_options=options,
-            tweets=filtered_tweets,
-        )
+            for p in raw_batch:
+                if p.tweet_id in seen_tweet_ids:
+                    continue
+                seen_tweet_ids.add(p.tweet_id)
 
-    def _fetch_recent_posts_raw(self, profile: ProfileInfo, limit: int = 30) -> List[ProfileTweetItem]:
-        """Fetch raw posts with attribution metadata from Twitter GraphQL."""
+                if p.is_retweet and not options.include_retweets:
+                    continue
+                if p.is_quote and not options.include_quotes:
+                    continue
+                if p.source_user and p.source_user.lower() != clean_user.lower() and not options.include_sourced_media:
+                    continue
+
+                allowed_items: List[MediaItem] = []
+                for item in p.media_items:
+                    if item.type == MediaType.VIDEO and options.include_videos:
+                        allowed_items.append(item)
+                    elif item.type == MediaType.PHOTO and options.include_photos:
+                        allowed_items.append(item)
+                    elif item.type == MediaType.GIF and options.include_gifs:
+                        allowed_items.append(item)
+
+                if not allowed_items:
+                    continue
+
+                p.media_items = allowed_items
+                filtered_tweets.append(p)
+
+                if options.limit > 0 and len(filtered_tweets) >= options.limit:
+                    return ProfileMediaResult(profile=profile_info, filter_options=options, tweets=filtered_tweets)
+
+            if not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+
+        return ProfileMediaResult(profile=profile_info, filter_options=options, tweets=filtered_tweets)
+
+    def _fetch_timeline_page(
+        self, user_id: str, profile: ProfileInfo, cursor: Optional[str] = None
+    ) -> tuple[List[ProfileTweetItem], Optional[str]]:
+        """Fetch a single page of tweets and return the next bottom cursor."""
         raw_items: List[ProfileTweetItem] = []
-        user_id = profile.rest_id
-
-        if not user_id:
-            logger.warning(f"No rest_id for user {profile.username}")
-            return raw_items
+        next_bottom_cursor = None
 
         headers = self._build_graphql_headers()
-
         features = {
             "responsive_web_graphql_exclude_directive_enabled": True,
             "verified_phone_label_enabled": False,
@@ -277,17 +342,21 @@ class ProfileExtractor:
             "responsive_web_enhance_cards_enabled": False,
         }
 
+        variables = {
+            "userId": str(user_id),
+            "count": 20,
+            "includePromotedContent": False,
+            "withClientEventToken": False,
+            "withBirdwatchNotes": False,
+            "withVoice": False,
+            "withV2Timeline": True,
+        }
+        if cursor:
+            variables["cursor"] = cursor
+
         url = f"https://x.com/i/api/graphql/{USER_TWEETS_QUERY_ID}/UserTweets"
         params = {
-            "variables": json.dumps({
-                "userId": str(user_id),
-                "count": max(20, limit),
-                "includePromotedContent": False,
-                "withClientEventToken": False,
-                "withBirdwatchNotes": False,
-                "withVoice": False,
-                "withV2Timeline": True,
-            }),
+            "variables": json.dumps(variables),
             "features": json.dumps(features),
         }
 
@@ -306,6 +375,11 @@ class ProfileExtractor:
                 for inst in instructions:
                     entries = inst.get("entries", [])
                     for e in entries:
+                        entry_id = e.get("entryId", "")
+                        # Capture bottom cursor
+                        if "cursor-bottom" in entry_id.lower() or e.get("content", {}).get("cursorType") == "Bottom":
+                            next_bottom_cursor = e.get("content", {}).get("value")
+
                         item_content = e.get("content", {}).get("itemContent", {})
                         tweet_results = item_content.get("tweet_results", {})
                         result = tweet_results.get("result", {})
@@ -324,12 +398,10 @@ class ProfileExtractor:
                         if not tweet_id:
                             continue
 
-                        # Extract text and attribution flags
                         text = legacy.get("full_text", "")
                         is_rt = "retweeted_status_result" in legacy or text.startswith("RT @")
                         is_quote = legacy.get("is_quote_status", False)
 
-                        # Extract media elements
                         extended_entities = legacy.get("extended_entities", {})
                         media_list = extended_entities.get("media", [])
                         if not media_list:
@@ -338,7 +410,6 @@ class ProfileExtractor:
                         if not media_list:
                             continue
 
-                        # Check sourced attribution (From @other_user)
                         source_user = None
                         first_media = media_list[0] if media_list else {}
                         add_info = first_media.get("additional_media_info", {})
@@ -371,7 +442,7 @@ class ProfileExtractor:
                                             is_gif=is_gif,
                                         )
                                     )
-                            else:  # Photo
+                            else:
                                 photo_url = m.get("media_url_https")
                                 if photo_url:
                                     orig_url = get_orig_photo_url(photo_url)
@@ -404,9 +475,9 @@ class ProfileExtractor:
                             )
 
         except Exception as e:
-            logger.error(f"Failed to fetch timeline for {profile.username}: {e}", exc_info=True)
+            logger.error(f"Failed to fetch timeline page for {profile.username}: {e}", exc_info=True)
 
-        return raw_items
+        return raw_items, next_bottom_cursor
 
 
 profile_extractor = ProfileExtractor()

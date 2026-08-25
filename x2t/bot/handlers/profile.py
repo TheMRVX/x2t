@@ -1,4 +1,4 @@
-"""Profile timeline and advanced batch media download handlers."""
+"""Profile timeline and advanced batch media download handlers with streaming extraction and pinned progress."""
 
 import asyncio
 import html
@@ -69,7 +69,7 @@ async def handle_profile_or_text(message: Message):
         # Fetch profile metadata
         info = profile_extractor.get_profile_info(username)
 
-        # Initialize default filter state (Strict Original Only mode)
+        # Initialize default filter state (Strict Original Only mode, Limit 0 = Unlimited/All)
         state_key = _get_state_key(message.from_user.id, info.username)
         options = ProfileFilterOptions(
             include_videos=True,
@@ -78,7 +78,7 @@ async def handle_profile_or_text(message: Message):
             include_retweets=False,        # Default: Exclude Retweets
             include_sourced_media=False,   # Default: Exclude 'From @other'
             include_quotes=False,          # Default: Exclude Quote tweets
-            limit=10,
+            limit=0,                       # Default: 0 = Unlimited / All available
         )
         user_profile_states[state_key] = options
 
@@ -131,20 +131,21 @@ async def cb_toggle_option(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("prof:cycle_lim:"))
 async def cb_cycle_limit(callback: CallbackQuery):
-    """Cycle batch limit: 10 -> 25 -> 50 -> 100 -> 10."""
+    """Cycle batch limit: 0 (All) -> 10 -> 25 -> 50 -> 100 -> 0."""
     username = callback.data.split(":")[2]
     state_key = _get_state_key(callback.from_user.id, username)
     options = user_profile_states.get(state_key, ProfileFilterOptions())
 
-    limits = [10, 25, 50, 100]
+    limits = [0, 10, 25, 50, 100]
     curr_idx = limits.index(options.limit) if options.limit in limits else 0
     options.limit = limits[(curr_idx + 1) % len(limits)]
 
     user_profile_states[state_key] = options
     new_markup = get_profile_settings_keyboard(username, options)
 
+    limit_desc = "♾️ همه (تا آخرین پست)" if options.limit == 0 else f"{options.limit} پست"
     await callback.message.edit_reply_markup(reply_markup=new_markup)
-    await callback.answer(f"تعداد تنظیم شد روی: {options.limit} پست")
+    await callback.answer(f"تعداد تنظیم شد روی: {limit_desc}")
 
 
 @router.callback_query(F.data.startswith("prof:cancel:"))
@@ -155,87 +156,73 @@ async def cb_cancel_profile(callback: CallbackQuery):
 
 
 # =========================================================================
-# Batch Downloader Worker & Delivery
+# Batch Streaming Downloader Worker & Pinned Progress Delivery
 # =========================================================================
-
-def _render_progress_bar(current: int, total: int, bar_len: int = 12) -> str:
-    """Generate visual progress bar [████░░░░]."""
-    if total <= 0:
-        return "[░░░░░░░░░░░░]"
-    pct = min(1.0, current / total)
-    filled = int(round(pct * bar_len))
-    return f"[{'█' * filled}{'░' * (bar_len - filled)}] {int(pct * 100)}%"
-
 
 async def _run_batch_download_task(
     bot, chat_id: int, user_id: int, username: str, options: ProfileFilterOptions, status_msg: Message, task_id: str, db: Database
 ):
-    """Asynchronous worker that fetches timeline, downloads media, and sends to user."""
+    """Asynchronous worker that streamingly extracts, downloads, and delivers posts with pinned progress."""
+    cancel_markup = get_cancel_batch_keyboard(task_id)
+
+    # 1. Pin the progress message in the chat
+    try:
+        await bot.pin_chat_message(chat_id=chat_id, message_id=status_msg.message_id, disable_notification=True)
+    except Exception as e:
+        logger.debug(f"Could not pin status message: {e}")
+
     try:
         await status_msg.edit_text(
-            f"🔍 <b>در حال اسکن و فیلتر کردن پست‌های @{html.escape(username)}...</b>",
+            f"🔍 <b>در حال آغاز استخراج خطی پست‌های @{html.escape(username)}...</b>\n\n"
+            "⏳ <i>این پیام در بالای چت پین شده است تا وضعیت را لحظه‌ای مشاهده کنید.</i>",
             parse_mode="HTML",
+            reply_markup=cancel_markup,
         )
 
-        # 1. Fetch matching tweets
-        result = profile_extractor.fetch_profile_media_tweets(username, options)
-        tweets = result.tweets
+        sent_post_count = 0
+        total_media_count = 0
+        video_count = 0
+        photo_count = 0
+        gif_count = 0
 
-        if not tweets:
-            if not profile_extractor.has_auth_cookies():
-                msg_text = (
-                    f"⚠️ <b>هیچ پستی در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
-                    "🔞 <b>علت احتمالی (محدودیت سنی / NSFW):</b>\n"
-                    "این اکانت در توییتر دارای برچسب محتوای حساس یا بزرگسال است و توییتر مرور تایم‌لاین آن را برای کاربران مهمان (Guest) مسدود کرده است.\n\n"
-                    "💡 <b>راه‌حل:</b> برای دانلود اکانت‌های حساس، یک کوکی توییتر را با دستور زیر در ربات ست کنید:\n"
-                    "<code>/set_cookie YOUR_AUTH_TOKEN</code>\n\n"
-                    "✨ <i>برای تست اکانت‌های عمومی (مانند @NASA یا @elonmusk) هیچ نیازی به کوکی نیست.</i>"
-                )
-            else:
-                msg_text = (
-                    f"⚠️ <b>هیچ پستی با فیلترهای انتخابی شما در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
-                    "💡 <i>ممکن است فیلترها خیلی سخت‌گیرانه باشند یا اکانت پست مدیا جدیدی نداشته باشد.</i>"
-                )
-            await status_msg.edit_text(msg_text, parse_mode="HTML")
-            return
+        # 2. Linear streaming extraction loop
+        stream = profile_extractor.iter_profile_media_tweets_stream(username, options)
 
-        total_posts = len(tweets)
-        cancel_markup = get_cancel_batch_keyboard(task_id)
-
-        # 2. Sequential download and delivery loop
-        sent_count = 0
-        total_media_sent = 0
-
-        for idx, tweet_item in enumerate(tweets, start=1):
+        async for tweet_item in stream:
             if task_id not in active_tasks or active_tasks[task_id].cancelled():
                 logger.info(f"Batch task {task_id} was cancelled by user.")
                 break
 
-            # Update progress bar
-            prog_bar = _render_progress_bar(idx - 1, total_posts)
+            # Update pinned progress before downloading item
+            target_str = "♾️ همه پست‌های اکانت" if options.limit == 0 else f"{options.limit} پست"
             prog_text = (
-                f"📥 <b>در حال دانلود و ارسال مدیاهای @{html.escape(username)}...</b>\n\n"
-                f"📊 <b>پیشرفت:</b> {idx - 1} از {total_posts} پست {prog_bar}\n"
-                f"⚡ <b>مدیاهای ارسال شده:</b> {total_media_sent} فایل"
+                f"📥 <b>در حال دانلود و ارسال محتوای @{html.escape(username)}:</b>\n\n"
+                f"📊 <b>پست‌های ارسال شده:</b> {sent_post_count} پست (هدف: {target_str})\n"
+                f"⚡ <b>کل مدیاهای تحویل داده شده:</b> {total_media_count} فایل\n"
+                f"  • 📹 ویدیوها: {video_count}  |  🖼️ عکس‌ها: {photo_count}  |  🎞️ گیف‌ها: {gif_count}\n\n"
+                f"⏳ <b>وضعیت:</b> در حال دانلود پست شماره {sent_post_count + 1}..."
             )
             try:
                 await status_msg.edit_text(prog_text, parse_mode="HTML", reply_markup=cancel_markup)
             except Exception:
                 pass
 
-            # Download post media
+            # Download post media to temporary disk directory
             temp_dir = bot_config.temp_download_dir / f"batch_{user_id}_{tweet_item.tweet_id}"
             post_result = await x2t.download_media_async(tweet_item.canonical_url, output_dir=temp_dir)
 
             if post_result.has_media:
-                # Deliver to chat via MTProto
+                # Deliver to chat via MTProto (up to 2GB)
                 await send_post_media(
                     bot=bot,
                     chat_id=chat_id,
                     result=post_result,
                 )
-                sent_count += 1
-                total_media_sent += post_result.media_count
+                sent_post_count += 1
+                total_media_count += post_result.media_count
+                video_count += post_result.video_count
+                photo_count += post_result.photo_count
+                gif_count += post_result.gif_count
 
                 # Record stats in DB
                 await db.record_download(
@@ -247,19 +234,41 @@ async def _run_batch_download_task(
             # Rate-limiting delay to protect Telegram bot
             await asyncio.sleep(1.5)
 
-        # Final completion message
-        final_prog = _render_progress_bar(sent_count, total_posts)
-        await status_msg.edit_text(
-            f"✅ <b>دانلود و ارسال محتوای @{html.escape(username)} با موفقیت پایان یافت!</b>\n\n"
-            f"• پست‌های ارسال شده: {sent_count} از {total_posts} {final_prog}\n"
-            f"• مجموع کل مدیاها: {total_media_sent} فایل",
-            parse_mode="HTML",
-        )
+        # Final Completion
+        if sent_post_count == 0:
+            if not profile_extractor.has_auth_cookies():
+                msg_text = (
+                    f"⚠️ <b>هیچ پستی در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
+                    "🔞 <b>علت احتمالی (محدودیت سنی / NSFW):</b>\n"
+                    "این اکانت در توییتر دارای برچسب محتوای حساس یا بزرگسال است و توییتر مرور تایم‌لاین آن را برای کاربران مهمان (Guest) مسدود کرده است.\n\n"
+                    "💡 <b>راه‌حل:</b> ادمین می‌تواند با دستور <code>/set_cookie</code> کوکی توییتر را تنظیم کند."
+                )
+            else:
+                msg_text = (
+                    f"⚠️ <b>هیچ پستی با فیلترهای انتخابی شما در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
+                    "💡 <i>ممکن است فیلترها خیلی سخت‌گیرانه باشند یا اکانت پست مدیا جدیدی نداشته باشد.</i>"
+                )
+            await status_msg.edit_text(msg_text, parse_mode="HTML")
+        else:
+            final_text = (
+                f"✅ <b>دانلود و ارسال محتوای @{html.escape(username)} با موفقیت پایان یافت!</b>\n\n"
+                f"📊 <b>مجموع کل پست‌های ارسالی:</b> {sent_post_count} پست\n"
+                f"⚡ <b>مجموع کل فایل‌های مدیا:</b> {total_media_count} فایل\n"
+                f"  • 📹 ویدیوها: {video_count} عدد\n"
+                f"  • 🖼️ تصاویر: {photo_count} عدد\n"
+                f"  • 🎞️ گیف‌ها: {gif_count} عدد\n\n"
+                "🌟 <i>تمام فایل‌ها با بالاترین کیفیت ممکن و بدون محدودیت ارسال شدند.</i>"
+            )
+            await status_msg.edit_text(final_text, parse_mode="HTML")
 
     except asyncio.CancelledError:
-        await status_msg.edit_text("🛑 <b>عملیات دانلود با موفقیت توسط شما متوقف شد.</b>", parse_mode="HTML")
+        await status_msg.edit_text(
+            f"🛑 <b>عملیات دانلود @{html.escape(username)} توسط شما متوقف شد.</b>\n\n"
+            f"• پست‌های ارسال شده تا این لحظه: {sent_post_count} پست ({total_media_count} فایل مدیا)",
+            parse_mode="HTML",
+        )
     except Exception as e:
-        logger.error(f"Error in batch worker for {username}: {e}", exc_info=True)
+        logger.error(f"Error in streaming batch worker for {username}: {e}", exc_info=True)
         await status_msg.edit_text(
             f"❌ <b>خطا در پردازش دسته‌ای:</b>\n<code>{html.escape(str(e)[:150])}</code>",
             parse_mode="HTML",
@@ -270,7 +279,7 @@ async def _run_batch_download_task(
 
 @router.callback_query(F.data.startswith("prof:start:"))
 async def cb_start_batch_download(callback: CallbackQuery, db: Database):
-    """Start batch downloader task."""
+    """Start batch streaming downloader task."""
     username = callback.data.split(":")[2]
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
@@ -280,7 +289,6 @@ async def cb_start_batch_download(callback: CallbackQuery, db: Database):
 
     task_id = str(uuid.uuid4())[:8]
 
-    # Create background task
     task = asyncio.create_task(
         _run_batch_download_task(
             bot=callback.bot,
@@ -294,7 +302,7 @@ async def cb_start_batch_download(callback: CallbackQuery, db: Database):
         )
     )
     active_tasks[task_id] = task
-    await callback.answer("🚀 پردازش و دانلود دسته‌ای آغاز شد...")
+    await callback.answer("🚀 پردازش و دانلود خطی آغاز شد...")
 
 
 @router.callback_query(F.data.startswith("prof:stop_task:"))
@@ -304,6 +312,6 @@ async def cb_stop_batch_task(callback: CallbackQuery):
     task = active_tasks.get(task_id)
     if task and not task.done():
         task.cancel()
-        await callback.answer("🛑 در حال لغو عملیات...")
+        await callback.answer("🛑 در حال توقف عملیات...")
     else:
         await callback.answer("عملیات قبلاً به پایان رسیده است.")

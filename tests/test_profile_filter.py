@@ -2,7 +2,7 @@
 
 import pytest
 from x2t.core.profile_extractor import ProfileExtractor
-from x2t.models import MediaItem, MediaType, ProfileFilterOptions, ProfileTweetItem
+from x2t.models import MediaItem, MediaType, ProfileFilterOptions, ProfileInfo, ProfileTweetItem
 
 
 def create_sample_post(
@@ -39,7 +39,7 @@ def test_default_filter_options():
     assert options.include_retweets is False
     assert options.include_sourced_media is False
     assert options.include_quotes is False
-    assert options.limit == 10
+    assert options.limit == 0  # 0 = Unlimited / All
 
 
 def test_profile_filtering_rules():
@@ -52,9 +52,11 @@ def test_profile_filtering_rules():
         create_sample_post("5", MediaType.PHOTO),                                     # 5. Original Photo (Pass)
     ]
 
+    extractor.get_profile_info = lambda u: ProfileInfo(rest_id="12345", username=u, name="Test User")
+    extractor._fetch_timeline_page = lambda uid, prof, cursor: (list(sample_posts), None)
+
     # Test 1: Default Strict Mode (No RT, No Sourced, No Quotes)
     options_default = ProfileFilterOptions(limit=10)
-    extractor._fetch_recent_posts_raw = lambda u, limit: list(sample_posts)
     result_default = extractor.fetch_profile_media_tweets("testuser", options_default)
     tweet_ids = [t.tweet_id for t in result_default.tweets]
     assert tweet_ids == ["1", "5"]

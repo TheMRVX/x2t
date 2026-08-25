@@ -13,6 +13,11 @@ def get_profile_settings_keyboard(username: str, options: ProfileFilterOptions) 
     src_icon = "✅" if options.include_sourced_media else "❌"
     quote_icon = "✅" if options.include_quotes else "❌"
 
+    if options.limit == 0:
+        limit_text = "♾️ همه (تا آخرین پست)"
+    else:
+        limit_text = f"{options.limit} پست"
+
     buttons = [
         [
             InlineKeyboardButton(text=f"📹 ویدیوها: {v_icon}", callback_data=f"prof:tog_v:{username}"),
@@ -29,7 +34,7 @@ def get_profile_settings_keyboard(username: str, options: ProfileFilterOptions) 
             InlineKeyboardButton(text=f"💬 توییت‌های نقل‌قول: {quote_icon}", callback_data=f"prof:tog_q:{username}"),
         ],
         [
-            InlineKeyboardButton(text=f"🔢 تعداد دریافتی: [ {options.limit} پست ]", callback_data=f"prof:cycle_lim:{username}"),
+            InlineKeyboardButton(text=f"🔢 تعداد دریافتی: [ {limit_text} ]", callback_data=f"prof:cycle_lim:{username}"),
         ],
         [
             InlineKeyboardButton(text="🚀 شروع دانلود و ارسال", callback_data=f"prof:start:{username}"),
@@ -44,7 +49,7 @@ def get_cancel_batch_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🛑 لغو عملیات دانلود", callback_data=f"prof:stop_task:{task_id}")
+                InlineKeyboardButton(text="🛑 لغو و توقف عملیات دانلود", callback_data=f"prof:stop_task:{task_id}")
             ]
         ]
     )

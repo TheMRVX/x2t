@@ -92,7 +92,7 @@ class ProfileFilterOptions(BaseModel):
     include_retweets: bool = Field(default=False, description="Include reposts/retweets (Default: False)")
     include_sourced_media: bool = Field(default=False, description="Include media from other accounts 'From @other' (Default: False)")
     include_quotes: bool = Field(default=False, description="Include quote tweets (Default: False)")
-    limit: int = Field(default=10, description="Max number of matching tweets/media to download (10, 25, 50, 100)")
+    limit: int = Field(default=0, description="Max matching tweets to download (0 = Unlimited / All available)")
 
 
 class ProfileInfo(BaseModel):
