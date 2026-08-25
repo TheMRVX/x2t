@@ -74,6 +74,18 @@ async def main():
         bot_config.is_private = (saved_mode.lower() == "true")
         logger.info(f"Loaded persistent bot mode from DB: is_private={bot_config.is_private}")
 
+    saved_allowed = await db.get_setting("allowed_user_ids")
+    if saved_allowed:
+        try:
+            import json
+            loaded_ids = json.loads(saved_allowed)
+            for uid in loaded_ids:
+                if uid not in bot_config.allowed_user_ids:
+                    bot_config.allowed_user_ids.append(uid)
+            logger.info(f"Loaded persistent allowed_user_ids from DB: {bot_config.allowed_user_ids}")
+        except Exception as e:
+            logger.warning(f"Failed to load allowed_user_ids from DB: {e}")
+
     saved_token = await db.get_setting("twitter_auth_token")
     saved_ct0 = await db.get_setting("twitter_ct0")
     if saved_token:

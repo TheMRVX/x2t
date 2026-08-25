@@ -31,6 +31,15 @@ class AccessControlMiddleware(BaseMiddleware):
         if not from_user:
             return await handler(event, data)
 
+        # Ignore bots, service updates, or self-pinned messages (prevents bot from blocking itself)
+        if getattr(from_user, "is_bot", False):
+            return await handler(event, data)
+
+        # Skip service messages (e.g. pinned_message, new_chat_members) that are not direct user messages
+        if isinstance(target_event, Message):
+            if getattr(target_event, "pinned_message", None) is not None or not (getattr(target_event, "text", None) or getattr(target_event, "caption", None)):
+                return await handler(event, data)
+
         user_id = from_user.id
         is_allowed = user_id in bot_config.admin_ids or user_id in bot_config.allowed_user_ids
 
@@ -38,7 +47,7 @@ class AccessControlMiddleware(BaseMiddleware):
             username_str = f"@{from_user.username}" if from_user.username else from_user.full_name
             logger.warning(f"Unauthorized access blocked for user_id: {user_id} ({username_str})")
 
-            if isinstance(target_event, Message):
+            if isinstance(target_event, Message) and (target_event.text or target_event.caption):
                 await target_event.reply(
                     "⛔ <b>دسترسی غیرمجاز!</b>\n\n"
                     "این ربات در حالت <b>خصوصی (Private)</b> تنظیم شده است و تنها برای ادمین و کاربران مجاز در دسترس است.\n\n"

@@ -1,6 +1,7 @@
-"""Admin commands and management handlers with persistent settings and token health checks."""
+"""Admin commands and management handlers with persistent settings, allowed users, and token health checks."""
 
 import asyncio
+import json
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -32,7 +33,8 @@ async def cmd_stats(message: Message, db: Database):
         f"⚙️ <b>وضعیت دسترسی ربات:</b> {mode_str}\n"
         f"👥 <b>تعداد کل کاربران:</b> {stats['total_users']:,}\n"
         f"📥 <b>تعداد کل فایل‌های دانلود شده:</b> {stats['total_downloads']:,}\n"
-        f"⚡ <b>کاربران فعال ۲۴ ساعت گذشته:</b> {stats['active_24h']:,}\n\n"
+        f"⚡ <b>کاربران فعال ۲۴ ساعت گذشته:</b> {stats['active_24h']:,}\n"
+        f"📋 <b>تعداد کاربران مجاز:</b> {len(bot_config.allowed_user_ids)}\n\n"
         f"🍪 <b>وضعیت نشست توییتر (Auth Token):</b>\n{health_str}"
     )
     await message.reply(text, parse_mode="HTML")
@@ -70,8 +72,8 @@ async def cmd_mode(message: Message, db: Database):
 
 
 @router.message(Command("allow"))
-async def cmd_allow_user(message: Message):
-    """Authorize a specific user ID in private mode."""
+async def cmd_allow_user(message: Message, db: Database):
+    """Authorize a specific user ID in private mode and persist in database."""
     if not is_admin(message.from_user.id):
         return
 
@@ -83,13 +85,14 @@ async def cmd_allow_user(message: Message):
     target_uid = int(parts[1])
     if target_uid not in bot_config.allowed_user_ids:
         bot_config.allowed_user_ids.append(target_uid)
+        await db.set_setting("allowed_user_ids", json.dumps(bot_config.allowed_user_ids))
 
     await message.reply(f"✅ کاربر با شناسه <code>{target_uid}</code> به لیست کاربران مجاز اضافه شد.", parse_mode="HTML")
 
 
 @router.message(Command("disallow"))
-async def cmd_disallow_user(message: Message):
-    """Revoke authorization for a user ID in private mode."""
+async def cmd_disallow_user(message: Message, db: Database):
+    """Revoke authorization for a user ID in private mode and persist in database."""
     if not is_admin(message.from_user.id):
         return
 
@@ -101,6 +104,7 @@ async def cmd_disallow_user(message: Message):
     target_uid = int(parts[1])
     if target_uid in bot_config.allowed_user_ids:
         bot_config.allowed_user_ids.remove(target_uid)
+        await db.set_setting("allowed_user_ids", json.dumps(bot_config.allowed_user_ids))
 
     await message.reply(f"🚫 دسترسی کاربر با شناسه <code>{target_uid}</code> لغو شد.", parse_mode="HTML")
 

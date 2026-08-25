@@ -50,6 +50,7 @@ async def test_access_control_private_mode_unauthorized_blocked():
 
     handler = AsyncMock(return_value="OK")
     msg = MagicMock(spec=Message)
+    msg.text = "/start"
     msg.from_user = MagicMock(spec=User, id=999, username="stranger", full_name="Stranger")
     msg.reply = AsyncMock()
     update = MagicMock(spec=Update, message=msg, callback_query=None, edited_message=None)
@@ -58,3 +59,22 @@ async def test_access_control_private_mode_unauthorized_blocked():
     assert res is None
     handler.assert_not_called()
     msg.reply.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_access_control_ignores_bot_or_service_messages():
+    """Verify that bot's own events, pins, and service updates are never blocked as unauthorized users."""
+    middleware = AccessControlMiddleware()
+    bot_config.is_private = True
+    bot_config.admin_ids = [111]
+    bot_config.allowed_user_ids = []
+
+    handler = AsyncMock(return_value="OK")
+    # 1. Event from a bot (like bot itself 9999999999)
+    bot_user = MagicMock(spec=User, id=9999999999, is_bot=True, username="my_bot")
+    msg = MagicMock(spec=Message, from_user=bot_user)
+    update = MagicMock(spec=Update, message=msg, callback_query=None, edited_message=None)
+
+    res = await middleware(handler, update, {})
+    assert res == "OK"
+    handler.assert_called_once()
