@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +19,14 @@ class BotSettings(BaseSettings):
     bot_token: str = Field(
         default="",
         description="Telegram Bot API Token from @BotFather",
+    )
+    api_id: Optional[int] = Field(
+        default=None,
+        description="Telegram App api_id from my.telegram.org (enables MTProto 2GB uploads)",
+    )
+    api_hash: Optional[str] = Field(
+        default=None,
+        description="Telegram App api_hash from my.telegram.org",
     )
     admin_ids: List[int] = Field(
         default_factory=list,
@@ -37,8 +45,8 @@ class BotSettings(BaseSettings):
         description="Minimum seconds between requests per user (Anti-Flood)",
     )
     max_file_size_mb: int = Field(
-        default=50,
-        description="Max file size in MB supported by standard Telegram Bot API",
+        default=2000,
+        description="Max file size in MB supported (2000 MB with MTProto)",
     )
 
     @field_validator("admin_ids", mode="before")
@@ -58,6 +66,11 @@ class BotSettings(BaseSettings):
             parts = clean.replace(",", " ").split()
             return [int(p) for p in parts if p.isdigit()]
         return v
+
+    @property
+    def has_mtproto(self) -> bool:
+        """True if MTProto credentials are fully configured."""
+        return bool(self.api_id and self.api_hash)
 
 
 bot_config = BotSettings()

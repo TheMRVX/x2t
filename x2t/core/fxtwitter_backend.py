@@ -96,21 +96,30 @@ class FxTwitterBackend:
                 best_bitrate = None
 
                 variants = m.get("variants") or []
+                duration = m.get("duration")
+                width = m.get("width")
+                height = m.get("height")
                 if variants:
-                    best_v = select_best_video_variant(variants)
+                    best_v = select_best_video_variant(variants, duration_seconds=duration)
                     if best_v and "url" in best_v:
                         best_url = best_v["url"]
                         best_bitrate = best_v.get("bitrate")
+                        # Extract dimensions from URL if present (e.g. 720x1280)
+                        import re
+                        dim_match = re.search(r"/(\d+)x(\d+)/", best_url)
+                        if dim_match:
+                            width = int(dim_match.group(1))
+                            height = int(dim_match.group(2))
 
                 items.append(
                     MediaItem(
                         id=str(idx),
                         type=MediaType.GIF if is_gif else MediaType.VIDEO,
                         url=best_url,
-                        width=m.get("width"),
-                        height=m.get("height"),
+                        width=width,
+                        height=height,
                         bitrate=best_bitrate,
-                        duration_seconds=m.get("duration"),
+                        duration_seconds=duration,
                         thumbnail_url=m.get("thumbnail_url"),
                         is_gif=is_gif,
                     )

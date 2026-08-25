@@ -6,20 +6,17 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from x2t.models import MediaType
 
+# MTProto allows up to 2000 MB (2 GB) uploads
+DEFAULT_MAX_FILE_SIZE = 2000 * 1024 * 1024
+
 
 def get_orig_photo_url(photo_url: str) -> str:
-    """Ensure a Twitter photo URL downloads in highest original quality (name=orig).
-
-    Example:
-        https://pbs.twimg.com/media/XYZ.jpg -> https://pbs.twimg.com/media/XYZ?format=jpg&name=orig
-    """
+    """Ensure a Twitter photo URL downloads in highest original quality (name=orig)."""
     parsed = urlparse(photo_url)
     if "pbs.twimg.com" not in parsed.netloc:
         return photo_url
 
     query = parse_qs(parsed.query)
-
-    # If it's something like /media/xyz.jpg
     path = parsed.path
     ext_match = re.search(r"\.(jpg|jpeg|png|webp)$", path, re.IGNORECASE)
     if ext_match and "format" not in query:
@@ -35,8 +32,12 @@ def get_orig_photo_url(photo_url: str) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-def select_best_video_variant(variants: List[Dict]) -> Optional[Dict]:
-    """Select the highest bitrate / highest resolution MP4 variant from Twitter API variants."""
+def select_best_video_variant(
+    variants: List[Dict],
+    duration_seconds: Optional[float] = None,
+    max_size_bytes: int = DEFAULT_MAX_FILE_SIZE,
+) -> Optional[Dict]:
+    """Select the highest bitrate MP4 variant that fits within max_size_bytes."""
     mp4_variants = [
         v for v in variants
         if v.get("content_type") == "video/mp4" and "url" in v
@@ -44,8 +45,19 @@ def select_best_video_variant(variants: List[Dict]) -> Optional[Dict]:
     if not mp4_variants:
         return None
 
-    # Sort by bitrate descending (or 0 if missing)
-    return max(mp4_variants, key=lambda x: x.get("bitrate", 0))
+    # Sort descending by bitrate
+    sorted_variants = sorted(mp4_variants, key=lambda x: x.get("bitrate", 0), reverse=True)
+
+    if duration_seconds and duration_seconds > 0:
+        # Estimate size: (bitrate * duration) / 8
+        for v in sorted_variants:
+            bitrate = v.get("bitrate", 0)
+            if bitrate:
+                est_size = (bitrate * duration_seconds) / 8
+                if est_size <= max_size_bytes:
+                    return v
+
+    return sorted_variants[0]
 
 
 def generate_filename(tweet_id: str, index: int, media_type: MediaType, ext: Optional[str] = None) -> str:

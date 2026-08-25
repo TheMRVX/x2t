@@ -11,6 +11,7 @@ from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
 from x2t.bot.handlers import setup_routers
 from x2t.bot.middlewares import ThrottlingMiddleware, UserTrackerMiddleware
+from x2t.bot.services.mtproto_client import mtproto_client
 
 # Configure logging
 logging.basicConfig(
@@ -42,27 +43,35 @@ async def main():
     # 2. Ensure temp directory exists
     bot_config.temp_download_dir.mkdir(parents=True, exist_ok=True)
 
-    # 3. Create Bot and Dispatcher
+    # 3. Start MTProto Client for 2GB uploads if api_id/api_hash configured
+    if bot_config.has_mtproto:
+        try:
+            await mtproto_client.start()
+        except Exception as e:
+            logger.warning(f"Could not start MTProto client: {e}. Running in standard Bot API mode.")
+
+    # 4. Create Bot and Dispatcher
     bot = Bot(
         token=bot_config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
 
-    # 4. Register Middlewares
+    # 5. Register Middlewares
     dp.message.middleware(ThrottlingMiddleware(limit=bot_config.rate_limit_seconds))
     dp.message.middleware(UserTrackerMiddleware(db=db))
     dp.callback_query.middleware(UserTrackerMiddleware(db=db))
 
-    # 5. Register Routers
+    # 6. Register Routers
     dp.include_router(setup_routers())
 
-    # 6. Start Polling
+    # 7. Start Polling
     logger.info("Starting bot polling...")
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
+        await mtproto_client.stop()
         await bot.session.close()
         logger.info("Bot stopped.")
 
