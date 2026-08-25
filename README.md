@@ -1,5 +1,10 @@
 # ⚡ x2t (X-to-Telegram Media Engine & Bot)
 
+<p align="center">
+  <a href="README.md">🇬🇧 English Documentation</a> •
+  <a href="README_FA.md">🇮🇷 راهنمای فارسی</a>
+</p>
+
 > **High-Performance, Zero-Third-Party Twitter / X Media Extractor, Advanced Profile Scraper, and MTProto Telegram Bot (up to 2000 MB / 2 GB direct uploads).**
 
 `x2t` is a modular, high-reliability Python engine and Telegram bot built to extract, download, and deliver media assets (Full HD/4K videos, original resolution photos, and looping GIFs) from any X/Twitter post or entire user profile with granular attribution filtering and real-time streaming delivery.
