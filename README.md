@@ -180,26 +180,3 @@ asyncio.run(stream_profile())
 | `/stats` | Admin | Total registered users, total downloaded files, and 24h active users. |
 | `/set_cookie <auth_token>` | Admin | Dynamically set or update Twitter `auth_token` for NSFW timelines. |
 | `/broadcast <message>` | Admin | Broadcast an announcement message to all registered users. |
-
----
-
-## 🧪 Testing
-
-Run the full automated test suite (35 unit and integration tests):
-
-```bash
-pytest -v
-```
-
----
-
-## 👥 Contributors
-
-- **TheMRVX** ([@TheMRVX](https://github.com/TheMRVX)) - Author & Project Lead
-- **Antigravity** ([Google DeepMind](https://deepmind.google/)) - AI Pair Programmer & Architecture Contributor
-
----
-
-## 📄 License
-
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** - see the [LICENSE](LICENSE) file for details.

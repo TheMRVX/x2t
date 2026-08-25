@@ -24,13 +24,80 @@ async def cmd_stats(message: Message, db: Database):
         return
 
     stats = await db.get_stats()
+    mode_str = "🔒 خصوصی (Private)" if bot_config.is_private else "🌐 عمومی (Public)"
     text = (
         "📊 <b>آمار سیستم ربات x2t:</b>\n\n"
+        f"⚙️ <b>وضعیت دسترسی ربات:</b> {mode_str}\n"
         f"👥 <b>تعداد کل کاربران:</b> {stats['total_users']:,}\n"
         f"📥 <b>تعداد کل فایل‌های دانلود شده:</b> {stats['total_downloads']:,}\n"
         f"⚡ <b>کاربران فعال ۲۴ ساعت گذشته:</b> {stats['active_24h']:,}"
     )
     await message.reply(text, parse_mode="HTML")
+
+
+@router.message(Command("mode"))
+async def cmd_mode(message: Message):
+    """Toggle or show Public/Private access mode."""
+    if not is_admin(message.from_user.id):
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        curr_mode = "🔒 خصوصی (Private)" if bot_config.is_private else "🌐 عمومی (Public)"
+        await message.reply(
+            f"⚙️ <b>حالت فعلی ربات:</b> {curr_mode}\n\n"
+            "💡 برای تغییر حالت می‌توانید از دستورات زیر استفاده کنید:\n"
+            "• <code>/mode private</code> (فقط ادمین‌ها و کاربران مجاز)\n"
+            "• <code>/mode public</code> (دسترسی آزاد برای همه)",
+            parse_mode="HTML",
+        )
+        return
+
+    target_mode = parts[1].lower()
+    if target_mode in ("private", "priv", "close", "off"):
+        bot_config.is_private = True
+        await message.reply("🔒 <b>حالت ربات به «خصوصی (Private)» تغییر یافت.</b>\nاکنون فقط ادمین‌ها و کاربران مجاز می‌توانند از ربات استفاده کنند.", parse_mode="HTML")
+    elif target_mode in ("public", "pub", "open", "on"):
+        bot_config.is_private = False
+        await message.reply("🌐 <b>حالت ربات به «عمومی (Public)» تغییر یافت.</b>\nاکنون همه کاربران تلگرام می‌توانند از ربات استفاده کنند.", parse_mode="HTML")
+    else:
+        await message.reply("⚠️ لطفاً <code>/mode private</code> یا <code>/mode public</code> را وارد کنید.", parse_mode="HTML")
+
+
+@router.message(Command("allow"))
+async def cmd_allow_user(message: Message):
+    """Authorize a specific user ID in private mode."""
+    if not is_admin(message.from_user.id):
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.reply("⚠️ فرمت دستور:\n<code>/allow USER_ID</code>", parse_mode="HTML")
+        return
+
+    target_uid = int(parts[1])
+    if target_uid not in bot_config.allowed_user_ids:
+        bot_config.allowed_user_ids.append(target_uid)
+
+    await message.reply(f"✅ کاربر با شناسه <code>{target_uid}</code> به لیست کاربران مجاز اضافه شد.", parse_mode="HTML")
+
+
+@router.message(Command("disallow"))
+async def cmd_disallow_user(message: Message):
+    """Revoke authorization for a user ID in private mode."""
+    if not is_admin(message.from_user.id):
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.reply("⚠️ فرمت دستور:\n<code>/disallow USER_ID</code>", parse_mode="HTML")
+        return
+
+    target_uid = int(parts[1])
+    if target_uid in bot_config.allowed_user_ids:
+        bot_config.allowed_user_ids.remove(target_uid)
+
+    await message.reply(f"🚫 دسترسی کاربر با شناسه <code>{target_uid}</code> لغو شد.", parse_mode="HTML")
 
 
 @router.message(Command("set_cookie"))

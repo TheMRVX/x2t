@@ -64,6 +64,8 @@ async def main():
     dp = Dispatcher()
 
     # 5. Register Middlewares
+    dp.message.middleware(AccessControlMiddleware())
+    dp.callback_query.middleware(AccessControlMiddleware())
     dp.message.middleware(ThrottlingMiddleware(limit=bot_config.rate_limit_seconds))
     dp.message.middleware(UserTrackerMiddleware(db=db))
     dp.callback_query.middleware(UserTrackerMiddleware(db=db))

@@ -28,9 +28,17 @@ class BotSettings(BaseSettings):
         default=None,
         description="Telegram App api_hash from my.telegram.org",
     )
+    is_private: bool = Field(
+        default=True,
+        description="If True, only admin_ids and allowed_user_ids can use the bot",
+    )
     admin_ids: List[int] = Field(
         default_factory=list,
         description="List of Telegram User IDs with admin access",
+    )
+    allowed_user_ids: List[int] = Field(
+        default_factory=list,
+        description="List of authorized Telegram user IDs when in private mode",
     )
     db_path: str = Field(
         default="bot_database.sqlite3",
@@ -57,9 +65,9 @@ class BotSettings(BaseSettings):
         description="Twitter ct0 CSRF token",
     )
 
-    @field_validator("admin_ids", mode="before")
+    @field_validator("admin_ids", "allowed_user_ids", mode="before")
     @classmethod
-    def parse_admin_ids(cls, v: Any) -> List[int]:
+    def parse_user_ids_list(cls, v: Any) -> List[int]:
         if isinstance(v, (int, float)):
             return [int(v)]
         if isinstance(v, str):
