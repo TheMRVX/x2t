@@ -48,6 +48,14 @@ class BotSettings(BaseSettings):
         default=2000,
         description="Max file size in MB supported (2000 MB with MTProto)",
     )
+    twitter_auth_token: Optional[str] = Field(
+        default=None,
+        description="Twitter auth_token cookie for age-restricted accounts",
+    )
+    twitter_ct0: Optional[str] = Field(
+        default=None,
+        description="Twitter ct0 CSRF token",
+    )
 
     @field_validator("admin_ids", mode="before")
     @classmethod

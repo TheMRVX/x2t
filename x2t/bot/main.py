@@ -43,7 +43,13 @@ async def main():
     # 2. Ensure temp directory exists
     bot_config.temp_download_dir.mkdir(parents=True, exist_ok=True)
 
-    # 3. Start MTProto Client for 2GB uploads if api_id/api_hash configured
+    # 3. Load Twitter Auth Token if configured
+    if bot_config.twitter_auth_token:
+        from x2t.core.profile_extractor import profile_extractor
+        profile_extractor.set_twitter_auth_token(bot_config.twitter_auth_token, bot_config.twitter_ct0)
+        logger.info("Configured Twitter auth_token from settings.")
+
+    # 4. Start MTProto Client for 2GB uploads if api_id/api_hash configured
     if bot_config.has_mtproto:
         try:
             await mtproto_client.start()

@@ -45,20 +45,36 @@ class ProfileExtractor:
             follow_redirects=True,
         )
         self._guest_token: Optional[str] = None
+        self._auth_token: Optional[str] = None
+        self._ct0: Optional[str] = None
         self._load_cookies()
 
     def set_twitter_auth_token(self, auth_token: str, ct0: Optional[str] = None):
-        """Dynamically set Twitter auth token and ct0."""
-        self.client.cookies.set("auth_token", auth_token.strip(), domain=".x.com")
-        self.client.cookies.set("auth_token", auth_token.strip(), domain=".twitter.com")
+        """Dynamically set Twitter auth token and automatically resolve valid ct0 CSRF token."""
+        self._auth_token = auth_token.strip()
+        self.client.cookies.set("auth_token", self._auth_token, domain=".x.com")
+
         if ct0:
-            self.client.cookies.set("ct0", ct0.strip(), domain=".x.com")
-            self.client.cookies.set("ct0", ct0.strip(), domain=".twitter.com")
+            self._ct0 = ct0.strip()
+            self.client.cookies.set("ct0", self._ct0, domain=".x.com")
+        else:
+            # Auto-acquire ct0 by pinging x.com/home
+            try:
+                self.client.get("https://x.com/home", follow_redirects=True)
+                for cookie in self.client.cookies.jar:
+                    if cookie.name == "ct0":
+                        self._ct0 = cookie.value
+                        break
+                if self._ct0:
+                    logger.info("Successfully acquired ct0 CSRF token from Twitter.")
+            except Exception as e:
+                logger.warning(f"Could not auto-fetch ct0: {e}")
+
         logger.info("Updated Twitter auth_token in ProfileExtractor client.")
 
     def has_auth_cookies(self) -> bool:
-        """True if auth_token is present in cookies."""
-        return bool(self.client.cookies.get("auth_token"))
+        """True if auth_token is configured."""
+        return bool(self._auth_token)
 
     def _load_cookies(self):
         """Load cookies from cookies.txt or environment if exists."""
@@ -69,6 +85,10 @@ class ProfileExtractor:
                 jar.load(ignore_discard=True, ignore_expires=True)
                 for cookie in jar:
                     self.client.cookies.set(cookie.name, cookie.value, domain=cookie.domain, path=cookie.path)
+                    if cookie.name == "auth_token":
+                        self._auth_token = cookie.value
+                    elif cookie.name == "ct0":
+                        self._ct0 = cookie.value
                 logger.info(f"Loaded cookies from {self.cookies_file}")
             except Exception as e:
                 logger.warning(f"Failed to load cookies from {self.cookies_file}: {e}")
@@ -151,13 +171,21 @@ class ProfileExtractor:
             "x-twitter-client-language": "en",
         }
 
-        auth_token = self.client.cookies.get("auth_token")
-        ct0 = self.client.cookies.get("ct0")
-
-        if auth_token:
+        if self._auth_token:
             headers["x-twitter-auth-type"] = "OAuth2Session"
-            if ct0:
-                headers["x-csrf-token"] = ct0
+            if not self._ct0:
+                # Trigger a fast ping to fetch ct0
+                try:
+                    self.client.get("https://x.com/home", follow_redirects=True)
+                    for cookie in self.client.cookies.jar:
+                        if cookie.name == "ct0":
+                            self._ct0 = cookie.value
+                            break
+                except Exception:
+                    pass
+
+            if self._ct0:
+                headers["x-csrf-token"] = self._ct0
         else:
             headers["x-guest-token"] = self._get_guest_token()
 
