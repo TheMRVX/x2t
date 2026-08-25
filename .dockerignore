@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+downloads
+data
+*.sqlite3
+*.session
+*.session-journal
+.env

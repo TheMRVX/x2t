@@ -5,9 +5,13 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies (FFmpeg is required for HLS stream handling)
+# Install system dependencies (FFmpeg for media processing, gcc/build-essential for tgcrypto C-extensions)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        curl \
+        build-essential \
+        python3-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
