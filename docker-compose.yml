@@ -8,6 +8,7 @@ services:
     volumes:
       - ./bot_database.sqlite3:/app/bot_database.sqlite3
       - ./downloads:/app/downloads
+      - ./logs:/app/logs
     logging:
       driver: "json-file"
       options:

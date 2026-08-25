@@ -1,8 +1,9 @@
-"""Entry point for x2t Telegram Bot."""
+"""Entry point for x2t Telegram Bot with resilient logging and global error handling."""
 
 import asyncio
-import logging
+import os
 import sys
+from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -11,16 +12,21 @@ from aiogram.types import BotCommand, BotCommandScopeDefault
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
 from x2t.bot.handlers import setup_routers
-from x2t.bot.middlewares import AccessControlMiddleware, ThrottlingMiddleware, UserTrackerMiddleware
-from x2t.bot.services.mtproto_client import mtproto_client
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+from x2t.bot.middlewares import (
+    AccessControlMiddleware,
+    ThrottlingMiddleware,
+    UserTrackerMiddleware,
+    error_router,
 )
-logger = logging.getLogger("x2t.bot")
+from x2t.bot.services.mtproto_client import mtproto_client
+from x2t.logger import get_logger, setup_logging
+
+# 1. Initialize Colorized & Sanitized Logging
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    log_file=Path("logs/x2t_bot.log"),
+)
+logger = get_logger("x2t.bot")
 
 
 async def setup_bot_commands(bot: Bot):
@@ -46,11 +52,7 @@ async def setup_bot_commands(bot: Bot):
 async def main():
     """Main application lifecycle."""
     if not bot_config.bot_token:
-        logger.error(
-            "\n[ERROR] Telegram BOT_TOKEN is required.\n"
-            "Please create a .env file with your token:\n"
-            "BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRstuvWXyz\n"
-        )
+        logger.error("BOT_TOKEN is required. Please set BOT_TOKEN in your environment or .env file.")
         sys.exit(1)
 
     logger.info("Initializing x2t Telegram Bot...")
@@ -60,8 +62,9 @@ async def main():
     await db.init_db()
     logger.info(f"Database initialized at {bot_config.db_path}")
 
-    # 2. Ensure temp directory exists
+    # 2. Ensure temp and logs directories exist
     bot_config.temp_download_dir.mkdir(parents=True, exist_ok=True)
+    Path("logs").mkdir(parents=True, exist_ok=True)
 
     # 3. Load Twitter Auth Token if configured
     if bot_config.twitter_auth_token:
@@ -71,10 +74,7 @@ async def main():
 
     # 4. Start MTProto Client for 2GB uploads if api_id/api_hash configured
     if bot_config.has_mtproto:
-        try:
-            await mtproto_client.start()
-        except Exception as e:
-            logger.warning(f"Could not start MTProto client: {e}. Running in standard Bot API mode.")
+        await mtproto_client.start()
 
     # 5. Create Bot and Dispatcher
     bot = Bot(
@@ -86,14 +86,15 @@ async def main():
     # 6. Register Bot Menu Commands Button
     await setup_bot_commands(bot)
 
-    # 7. Register Middlewares (Outer middleware runs before all filters & routers)
+    # 7. Register Middlewares
     dp.update.outer_middleware(AccessControlMiddleware())
     dp.message.middleware(ThrottlingMiddleware(limit=bot_config.rate_limit_seconds))
     dp.message.middleware(UserTrackerMiddleware(db=db))
     dp.callback_query.middleware(UserTrackerMiddleware(db=db))
 
-    # 8. Register Routers
+    # 8. Register Routers and Global Error Boundary
     dp.include_router(setup_routers())
+    dp.include_router(error_router)
 
     # 9. Start Polling
     logger.info("Starting bot polling...")
@@ -103,7 +104,7 @@ async def main():
     finally:
         await mtproto_client.stop()
         await bot.session.close()
-        logger.info("Bot stopped.")
+        logger.info("Bot stopped cleanly.")
 
 
 if __name__ == "__main__":

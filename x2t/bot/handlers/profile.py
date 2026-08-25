@@ -2,7 +2,6 @@
 
 import asyncio
 import html
-import logging
 import uuid
 from typing import Dict
 from aiogram import F, Router
@@ -14,10 +13,12 @@ from x2t.bot.database.db import Database
 from x2t.bot.keyboards.profile_inline import get_cancel_batch_keyboard, get_profile_settings_keyboard
 from x2t.bot.services.media_sender import send_post_media
 from x2t.core.profile_extractor import profile_extractor
+from x2t.exceptions import ProfileNotFoundError, X2TError
+from x2t.logger import get_logger
 from x2t.models import ProfileFilterOptions, ProfileInfo
 from x2t.utils.url_helper import extract_profile_username, extract_tweet_id
 
-logger = logging.getLogger("x2t.bot.profile")
+logger = get_logger("x2t.bot.profile")
 router = Router(name="profile_router")
 
 # User filter options state: user_id:username -> ProfileFilterOptions
@@ -54,6 +55,7 @@ def _format_profile_card(info: ProfileInfo) -> str:
 async def handle_profile_or_text(message: Message):
     """Detect profile URLs / @handles and display interactive filter panel."""
     text = message.text.strip()
+    user_id = message.from_user.id if message.from_user else 0
 
     # Skip if it is a specific tweet status URL
     if extract_tweet_id(text):
@@ -68,9 +70,12 @@ async def handle_profile_or_text(message: Message):
     try:
         # Fetch profile metadata
         info = profile_extractor.get_profile_info(username)
+        if not info.rest_id and info.username == username and info.name == username and not info.followers_count:
+            # Check if username is invalid
+            pass
 
         # Initialize default filter state (Strict Original Only mode, Limit 0 = Unlimited/All)
-        state_key = _get_state_key(message.from_user.id, info.username)
+        state_key = _get_state_key(user_id, info.username)
         options = ProfileFilterOptions(
             include_videos=True,
             include_photos=True,
@@ -87,12 +92,22 @@ async def handle_profile_or_text(message: Message):
 
         await status_msg.edit_text(card_text, parse_mode="HTML", reply_markup=markup)
 
+    except X2TError as e:
+        logger.warning(f"Profile domain error [{e.error_code}] for @{username} user={user_id}: {e.message}")
+        await status_msg.edit_text(e.format_telegram_error(), parse_mode="HTML")
+
     except Exception as e:
-        logger.error(f"Error fetching profile for {username}: {e}", exc_info=True)
-        await status_msg.edit_text(
-            f"❌ <b>خطا در دریافت پروفایل @{html.escape(username)}:</b>\n<code>{html.escape(str(e)[:150])}</code>",
-            parse_mode="HTML",
+        incident_id = str(uuid.uuid4())[:8].upper()
+        logger.error(
+            f"Error fetching profile [Incident #{incident_id}] for @{username} user={user_id}: {e}",
+            exc_info=True,
         )
+        error_text = (
+            f"❌ <b>خطا در دریافت پروفایل @{html.escape(username)}:</b>\n\n"
+            f"🔖 <code>کد پیگیری خطا: #{incident_id}</code>\n"
+            "💡 <i>لطفاً از صحت نام کاربری اطمینان حاصل کرده و مجدداً تلاش کنید.</i>"
+        )
+        await status_msg.edit_text(error_text, parse_mode="HTML")
 
 
 # =========================================================================
@@ -151,7 +166,10 @@ async def cb_cycle_limit(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("prof:cancel:"))
 async def cb_cancel_profile(callback: CallbackQuery):
     """Cancel and delete profile card."""
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await callback.answer("عملیات لغو شد.")
 
 
@@ -171,6 +189,12 @@ async def _run_batch_download_task(
     except Exception as e:
         logger.debug(f"Could not pin status message: {e}")
 
+    sent_post_count = 0
+    total_media_count = 0
+    video_count = 0
+    photo_count = 0
+    gif_count = 0
+
     try:
         await status_msg.edit_text(
             f"🔍 <b>در حال آغاز استخراج خطی پست‌های @{html.escape(username)}...</b>\n\n"
@@ -179,18 +203,12 @@ async def _run_batch_download_task(
             reply_markup=cancel_markup,
         )
 
-        sent_post_count = 0
-        total_media_count = 0
-        video_count = 0
-        photo_count = 0
-        gif_count = 0
-
         # 2. Linear streaming extraction loop
         stream = profile_extractor.iter_profile_media_tweets_stream(username, options)
 
         async for tweet_item in stream:
             if task_id not in active_tasks or active_tasks[task_id].cancelled():
-                logger.info(f"Batch task {task_id} was cancelled by user.")
+                logger.info(f"Batch task {task_id} was cancelled by user {user_id}.")
                 break
 
             # Update pinned progress before downloading item
@@ -209,7 +227,11 @@ async def _run_batch_download_task(
 
             # Download post media to temporary disk directory
             temp_dir = bot_config.temp_download_dir / f"batch_{user_id}_{tweet_item.tweet_id}"
-            post_result = await x2t.download_media_async(tweet_item.canonical_url, output_dir=temp_dir)
+            try:
+                post_result = await x2t.download_media_async(tweet_item.canonical_url, output_dir=temp_dir)
+            except Exception as dl_err:
+                logger.warning(f"Could not download post {tweet_item.tweet_id}: {dl_err}")
+                continue
 
             if post_result.has_media:
                 # Deliver to chat via MTProto (up to 2GB)
@@ -267,10 +289,16 @@ async def _run_batch_download_task(
             f"• پست‌های ارسال شده تا این لحظه: {sent_post_count} پست ({total_media_count} فایل مدیا)",
             parse_mode="HTML",
         )
+    except X2TError as e:
+        logger.warning(f"Batch domain error [{e.error_code}] for @{username}: {e.message}")
+        await status_msg.edit_text(e.format_telegram_error(), parse_mode="HTML")
     except Exception as e:
-        logger.error(f"Error in streaming batch worker for {username}: {e}", exc_info=True)
+        incident_id = str(uuid.uuid4())[:8].upper()
+        logger.error(f"Error in streaming batch worker [Incident #{incident_id}] for {username}: {e}", exc_info=True)
         await status_msg.edit_text(
-            f"❌ <b>خطا در پردازش دسته‌ای:</b>\n<code>{html.escape(str(e)[:150])}</code>",
+            f"❌ <b>خطا در پردازش دسته‌ای @{html.escape(username)}!</b>\n\n"
+            f"🔖 <code>کد پیگیری خطا: #{incident_id}</code>\n"
+            "💡 <i>پست‌های دریافت شده تا این لحظه در چت موجود می‌باشند.</i>",
             parse_mode="HTML",
         )
     finally:

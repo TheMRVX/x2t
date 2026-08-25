@@ -4,6 +4,21 @@ from pathlib import Path
 from typing import Optional, Union
 
 from x2t.core.extractor import XMediaExtractor
+from x2t.exceptions import (
+    AgeRestrictedError,
+    ExtractionError,
+    MediaDownloadError,
+    NetworkConnectionError,
+    NoMediaFoundError,
+    PrivateTweetError,
+    ProfileNotFoundError,
+    TelegramDeliveryError,
+    TweetNotFoundError,
+    TwitterRateLimitError,
+    UnauthorizedAccessError,
+    X2TError,
+)
+from x2t.logger import get_logger, setup_logging
 from x2t.models import MediaItem, MediaType, PostMediaResult
 
 __version__ = "0.1.0"
@@ -15,6 +30,20 @@ __all__ = [
     "PostMediaResult",
     "MediaItem",
     "MediaType",
+    "X2TError",
+    "ExtractionError",
+    "TweetNotFoundError",
+    "PrivateTweetError",
+    "AgeRestrictedError",
+    "NoMediaFoundError",
+    "TwitterRateLimitError",
+    "ProfileNotFoundError",
+    "NetworkConnectionError",
+    "MediaDownloadError",
+    "TelegramDeliveryError",
+    "UnauthorizedAccessError",
+    "setup_logging",
+    "get_logger",
 ]
 
 _default_extractor = XMediaExtractor()
