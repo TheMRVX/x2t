@@ -6,6 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "x2t"
 version = "0.1.0"
 description = "High-performance, multi-media downloader engine for Twitter / X posts"
+authors = [
+    { name = "TheMRVX Marvi", email = "TheMRVX@users.noreply.github.com" },
+    { name = "Antigravity (Google DeepMind)" },
+]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

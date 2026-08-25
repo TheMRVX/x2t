@@ -193,6 +193,13 @@ pytest -v
 
 ---
 
+## 👥 Contributors
+
+- **TheMRVX Marvi** ([@TheMRVX](https://github.com/TheMRVX)) - Author & Lead Maintainer
+- **Antigravity** ([Google DeepMind](https://deepmind.google/)) - AI Pair Programmer & Architecture Contributor
+
+---
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
