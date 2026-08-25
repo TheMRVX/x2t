@@ -6,6 +6,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand, BotCommandScopeDefault
 
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
@@ -22,11 +23,30 @@ logging.basicConfig(
 logger = logging.getLogger("x2t.bot")
 
 
+async def setup_bot_commands(bot: Bot):
+    """Register menu commands list with Telegram API (displayed next to keyboard)."""
+    commands = [
+        BotCommand(command="start", description="🚀 شروع به کار و راهنمای ربات"),
+        BotCommand(command="help", description="📖 راهنمای کامل استفاده و فیلترها"),
+        BotCommand(command="about", description="ℹ️ درباره سیستم و موتور دانلود x2t"),
+        BotCommand(command="mode", description="⚙️ مشاهده و تغییر حالت خصوصی/عمومی (ادمین)"),
+        BotCommand(command="stats", description="📊 آمار دانلودها و کاربران فعال (ادمین)"),
+        BotCommand(command="allow", description="✅ افزودن کاربر به لیست مجاز (ادمین)"),
+        BotCommand(command="disallow", description="🚫 لغو دسترسی کاربر (ادمین)"),
+        BotCommand(command="set_cookie", description="🍪 تنظیم کوکی توییتر برای اکانت‌های حساس (ادمین)"),
+        BotCommand(command="broadcast", description="📢 ارسال پیام همگانی (ادمین)"),
+    ]
+    try:
+        await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+        logger.info("Bot menu commands registered successfully.")
+    except Exception as e:
+        logger.warning(f"Could not register bot menu commands: {e}")
+
+
 async def main():
-    """Start polling loop for x2t Telegram Bot."""
+    """Main application lifecycle."""
     if not bot_config.bot_token:
-        logger.error("BOT_TOKEN is not set in environment or .env file!")
-        print(
+        logger.error(
             "\n[ERROR] Telegram BOT_TOKEN is required.\n"
             "Please create a .env file with your token:\n"
             "BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRstuvWXyz\n"
@@ -56,23 +76,26 @@ async def main():
         except Exception as e:
             logger.warning(f"Could not start MTProto client: {e}. Running in standard Bot API mode.")
 
-    # 4. Create Bot and Dispatcher
+    # 5. Create Bot and Dispatcher
     bot = Bot(
         token=bot_config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
 
-    # 5. Register Middlewares (Outer middleware runs before all filters & routers)
+    # 6. Register Bot Menu Commands Button
+    await setup_bot_commands(bot)
+
+    # 7. Register Middlewares (Outer middleware runs before all filters & routers)
     dp.update.outer_middleware(AccessControlMiddleware())
     dp.message.middleware(ThrottlingMiddleware(limit=bot_config.rate_limit_seconds))
     dp.message.middleware(UserTrackerMiddleware(db=db))
     dp.callback_query.middleware(UserTrackerMiddleware(db=db))
 
-    # 6. Register Routers
+    # 8. Register Routers
     dp.include_router(setup_routers())
 
-    # 7. Start Polling
+    # 9. Start Polling
     logger.info("Starting bot polling...")
     try:
         await bot.delete_webhook(drop_pending_updates=True)

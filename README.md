@@ -81,7 +81,12 @@ Edit `.env` with your credentials:
 BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRstuvWXyz
 API_ID=your_api_id_here
 API_HASH=your_api_hash_here
+
+# Access Control: true = Private mode (Admin/allowed only), false = Public
+IS_PRIVATE=true
 ADMIN_IDS=[123456789]
+ALLOWED_USER_IDS=[]
+
 DB_PATH=bot_database.sqlite3
 TEMP_DOWNLOAD_DIR=./downloads/temp_bot
 RATE_LIMIT_SECONDS=2.0
@@ -177,6 +182,9 @@ asyncio.run(stream_profile())
 | `/start` | User | Welcome screen, bot feature overview, and instructions. |
 | `/help` | User | Usage guide and troubleshooting tips. |
 | `/about` | User | Version, architecture, and technology stack information. |
+| `/mode [private/public]` | Admin | View or dynamically toggle between Private and Public access mode. |
 | `/stats` | Admin | Total registered users, total downloaded files, and 24h active users. |
+| `/allow <user_id>` | Admin | Authorize a specific Telegram User ID when in Private mode. |
+| `/disallow <user_id>` | Admin | Revoke access for a specific Telegram User ID. |
 | `/set_cookie <auth_token>` | Admin | Dynamically set or update Twitter `auth_token` for NSFW timelines. |
 | `/broadcast <message>` | Admin | Broadcast an announcement message to all registered users. |
