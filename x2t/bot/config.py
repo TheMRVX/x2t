@@ -1,8 +1,9 @@
 """Configuration settings for x2t Telegram Bot."""
 
+import json
 from pathlib import Path
-from typing import List
-from pydantic import Field
+from typing import Any, List
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,6 +40,24 @@ class BotSettings(BaseSettings):
         default=50,
         description="Max file size in MB supported by standard Telegram Bot API",
     )
+
+    @field_validator("admin_ids", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v: Any) -> List[int]:
+        if isinstance(v, (int, float)):
+            return [int(v)]
+        if isinstance(v, str):
+            clean = v.strip()
+            if not clean:
+                return []
+            if clean.startswith("[") and clean.endswith("]"):
+                try:
+                    return [int(x) for x in json.loads(clean)]
+                except Exception:
+                    pass
+            parts = clean.replace(",", " ").split()
+            return [int(p) for p in parts if p.isdigit()]
+        return v
 
 
 bot_config = BotSettings()
