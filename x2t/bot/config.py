@@ -32,11 +32,11 @@ class BotSettings(BaseSettings):
         default=True,
         description="If True, only admin_ids and allowed_user_ids can use the bot",
     )
-    admin_ids: List[int] = Field(
+    admin_ids: Any = Field(
         default_factory=list,
         description="List of Telegram User IDs with admin access",
     )
-    allowed_user_ids: List[int] = Field(
+    allowed_user_ids: Any = Field(
         default_factory=list,
         description="List of authorized Telegram user IDs when in private mode",
     )
@@ -70,6 +70,8 @@ class BotSettings(BaseSettings):
     def parse_user_ids_list(cls, v: Any) -> List[int]:
         if isinstance(v, (int, float)):
             return [int(v)]
+        if isinstance(v, (list, tuple, set)):
+            return [int(x) for x in v if str(x).isdigit() or isinstance(x, (int, float))]
         if isinstance(v, str):
             clean = v.strip()
             if not clean:
@@ -81,7 +83,7 @@ class BotSettings(BaseSettings):
                     pass
             parts = clean.replace(",", " ").split()
             return [int(p) for p in parts if p.isdigit()]
-        return v
+        return []
 
     @property
     def has_mtproto(self) -> bool:
