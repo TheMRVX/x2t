@@ -182,11 +182,21 @@ async def _run_batch_download_task(
         tweets = result.tweets
 
         if not tweets:
-            await status_msg.edit_text(
-                f"⚠️ <b>هیچ پستی با فیلترهای انتخابی شما در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
-                "💡 <i>ممکن است فیلترها خیلی سخت‌گیرانه باشند یا اکانت پست مدیا جدیدی نداشته باشد.</i>",
-                parse_mode="HTML",
-            )
+            if not profile_extractor.has_auth_cookies():
+                msg_text = (
+                    f"⚠️ <b>هیچ پستی در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
+                    "🔞 <b>علت احتمالی (محدودیت سنی / NSFW):</b>\n"
+                    "این اکانت در توییتر دارای برچسب محتوای حساس یا بزرگسال است و توییتر مرور تایم‌لاین آن را برای کاربران مهمان (Guest) مسدود کرده است.\n\n"
+                    "💡 <b>راه‌حل:</b> برای دانلود اکانت‌های حساس، یک کوکی توییتر را با دستور زیر در ربات ست کنید:\n"
+                    "<code>/set_cookie YOUR_AUTH_TOKEN</code>\n\n"
+                    "✨ <i>برای تست اکانت‌های عمومی (مانند @NASA یا @elonmusk) هیچ نیازی به کوکی نیست.</i>"
+                )
+            else:
+                msg_text = (
+                    f"⚠️ <b>هیچ پستی با فیلترهای انتخابی شما در اکانت @{html.escape(username)} یافت نشد.</b>\n\n"
+                    "💡 <i>ممکن است فیلترها خیلی سخت‌گیرانه باشند یا اکانت پست مدیا جدیدی نداشته باشد.</i>"
+                )
+            await status_msg.edit_text(msg_text, parse_mode="HTML")
             return
 
         total_posts = len(tweets)

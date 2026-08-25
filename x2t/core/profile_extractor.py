@@ -47,8 +47,21 @@ class ProfileExtractor:
         self._guest_token: Optional[str] = None
         self._load_cookies()
 
+    def set_twitter_auth_token(self, auth_token: str, ct0: Optional[str] = None):
+        """Dynamically set Twitter auth token and ct0."""
+        self.client.cookies.set("auth_token", auth_token.strip(), domain=".x.com")
+        self.client.cookies.set("auth_token", auth_token.strip(), domain=".twitter.com")
+        if ct0:
+            self.client.cookies.set("ct0", ct0.strip(), domain=".x.com")
+            self.client.cookies.set("ct0", ct0.strip(), domain=".twitter.com")
+        logger.info("Updated Twitter auth_token in ProfileExtractor client.")
+
+    def has_auth_cookies(self) -> bool:
+        """True if auth_token is present in cookies."""
+        return bool(self.client.cookies.get("auth_token"))
+
     def _load_cookies(self):
-        """Load cookies from cookies.txt if exists."""
+        """Load cookies from cookies.txt or environment if exists."""
         if self.cookies_file and Path(self.cookies_file).exists():
             try:
                 import http.cookiejar
@@ -98,12 +111,7 @@ class ProfileExtractor:
 
         # Method 2: Fallback to GraphQL UserByScreenName
         try:
-            guest_token = self._get_guest_token()
-            headers = {
-                "Authorization": f"Bearer {BEARER}",
-                "x-guest-token": guest_token,
-                "x-twitter-active-user": "yes",
-            }
+            headers = self._build_graphql_headers()
             url = "https://x.com/i/api/graphql/sLVLhk0bGj3MVFEKTdax1w/UserByScreenName"
             params = {
                 "variables": json.dumps({"screen_name": clean_user, "withSafetyModeUserFields": True}),
@@ -134,6 +142,26 @@ class ProfileExtractor:
 
         # Basic fallback
         return ProfileInfo(username=clean_user, name=clean_user)
+
+    def _build_graphql_headers(self) -> Dict[str, str]:
+        """Build request headers depending on whether auth cookies exist."""
+        headers = {
+            "Authorization": f"Bearer {BEARER}",
+            "x-twitter-active-user": "yes",
+            "x-twitter-client-language": "en",
+        }
+
+        auth_token = self.client.cookies.get("auth_token")
+        ct0 = self.client.cookies.get("ct0")
+
+        if auth_token:
+            headers["x-twitter-auth-type"] = "OAuth2Session"
+            if ct0:
+                headers["x-csrf-token"] = ct0
+        else:
+            headers["x-guest-token"] = self._get_guest_token()
+
+        return headers
 
     def fetch_profile_media_tweets(
         self, username: str, options: ProfileFilterOptions
@@ -195,13 +223,7 @@ class ProfileExtractor:
             logger.warning(f"No rest_id for user {profile.username}")
             return raw_items
 
-        guest_token = self._get_guest_token()
-        headers = {
-            "Authorization": f"Bearer {BEARER}",
-            "x-guest-token": guest_token,
-            "x-twitter-active-user": "yes",
-            "x-twitter-client-language": "en",
-        }
+        headers = self._build_graphql_headers()
 
         features = {
             "responsive_web_graphql_exclude_directive_enabled": True,
@@ -283,7 +305,6 @@ class ProfileExtractor:
                         extended_entities = legacy.get("extended_entities", {})
                         media_list = extended_entities.get("media", [])
                         if not media_list:
-                            # Check basic entities
                             media_list = legacy.get("entities", {}).get("media", [])
 
                         if not media_list:
