@@ -35,6 +35,7 @@ class Settings(BaseModel):
     # yt-dlp specific options
     ytdlp_quiet: bool = True
     ytdlp_no_warnings: bool = True
+    cookies_file: Optional[str] = None
 
 
 # Global default configuration instance
