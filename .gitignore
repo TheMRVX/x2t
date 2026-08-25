@@ -36,5 +36,14 @@ temp/
 *.mp4
 *.m4s
 *.m3u8
+# Database and sessions
+*.sqlite3
+*.sqlite3-journal
+*.db
+*.session
+*.session-journal
+*.cookie
+cookies.txt
+
 .env
 .DS_Store
