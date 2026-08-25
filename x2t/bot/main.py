@@ -10,7 +10,7 @@ from aiogram.enums import ParseMode
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
 from x2t.bot.handlers import setup_routers
-from x2t.bot.middlewares import ThrottlingMiddleware, UserTrackerMiddleware
+from x2t.bot.middlewares import AccessControlMiddleware, ThrottlingMiddleware, UserTrackerMiddleware
 from x2t.bot.services.mtproto_client import mtproto_client
 
 # Configure logging
