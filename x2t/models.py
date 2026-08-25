@@ -1,4 +1,4 @@
-"""Data models for x2t media extraction and downloader."""
+"""Data models for x2t media extraction, profile scrapers, and downloader."""
 
 from enum import Enum
 from pathlib import Path
@@ -77,3 +77,69 @@ class PostMediaResult(BaseModel):
     @property
     def gif_count(self) -> int:
         return sum(1 for item in self.items if item.type == MediaType.GIF)
+
+
+# =========================================================================
+# Advanced Profile Mode Models
+# =========================================================================
+
+class ProfileFilterOptions(BaseModel):
+    """Filter options configured by user before downloading profile media."""
+
+    include_videos: bool = Field(default=True, description="Download native video posts")
+    include_photos: bool = Field(default=True, description="Download photo posts")
+    include_gifs: bool = Field(default=True, description="Download animated GIF posts")
+    include_retweets: bool = Field(default=False, description="Include reposts/retweets (Default: False)")
+    include_sourced_media: bool = Field(default=False, description="Include media from other accounts 'From @other' (Default: False)")
+    include_quotes: bool = Field(default=False, description="Include quote tweets (Default: False)")
+    limit: int = Field(default=10, description="Max number of matching tweets/media to download (10, 25, 50, 100)")
+
+
+class ProfileInfo(BaseModel):
+    """Metadata summary of a Twitter/X user profile."""
+
+    rest_id: Optional[str] = Field(default=None, description="Numeric User ID")
+    username: str = Field(description="Twitter handle without @")
+    name: str = Field(description="Display name")
+    bio: Optional[str] = Field(default=None, description="Account biography description")
+    avatar_url: Optional[str] = Field(default=None, description="Profile avatar picture URL")
+    followers_count: Optional[int] = Field(default=None, description="Followers count")
+    media_count: Optional[int] = Field(default=None, description="Approximate total media count")
+
+
+class ProfileTweetItem(BaseModel):
+    """Represents a tweet discovered on a profile timeline with attribution flags."""
+
+    tweet_id: str
+    canonical_url: str
+    text: Optional[str] = None
+    created_at: Optional[str] = None
+    is_retweet: bool = False
+    is_quote: bool = False
+    source_user: Optional[str] = None  # Attribution username e.g. "From @OriginalCreator"
+    author_username: str
+    author_name: str
+    media_items: List[MediaItem] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def has_media(self) -> bool:
+        return len(self.media_items) > 0
+
+
+class ProfileMediaResult(BaseModel):
+    """Complete extraction result for an advanced profile query."""
+
+    profile: ProfileInfo
+    filter_options: ProfileFilterOptions
+    tweets: List[ProfileTweetItem] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def total_tweets(self) -> int:
+        return len(self.tweets)
+
+    @computed_field
+    @property
+    def total_media_items(self) -> int:
+        return sum(len(t.media_items) for t in self.tweets)

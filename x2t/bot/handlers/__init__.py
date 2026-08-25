@@ -3,6 +3,7 @@
 from aiogram import Router
 from x2t.bot.handlers.admin import router as admin_router
 from x2t.bot.handlers.downloader import router as downloader_router
+from x2t.bot.handlers.profile import router as profile_router
 from x2t.bot.handlers.start import router as start_router
 
 
@@ -11,5 +12,6 @@ def setup_routers() -> Router:
     main_router = Router(name="main_bot_router")
     main_router.include_router(admin_router)
     main_router.include_router(start_router)
-    main_router.include_router(downloader_router)
+    main_router.include_router(downloader_router)  # Regex matches specific tweet status URLs
+    main_router.include_router(profile_router)     # Matches @username / profile URLs
     return main_router
