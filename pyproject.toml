@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x2t"
+version = "0.1.0"
+description = "High-performance, multi-media downloader engine for Twitter / X posts"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "yt-dlp>=2024.08.06",
+    "pydantic>=2.7.0",
+    "httpx>=0.27.0",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+x2t = "x2t.__main__:main"
