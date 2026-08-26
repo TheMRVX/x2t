@@ -103,6 +103,9 @@ RATE_LIMIT_SECONDS=2.0
 
 # Optional: Twitter Auth Token for NSFW / Age-Restricted Profile Timelines
 TWITTER_AUTH_TOKEN=your_auth_token_here
+
+# Optional: Clean Caption Mode (true = raw post text only without author or buttons)
+CLEAN_CAPTION=false
 ```
 
 ---
@@ -194,6 +197,7 @@ asyncio.run(stream_profile())
 | `/help` | User | Usage guide and troubleshooting tips. |
 | `/about` | User | Version, architecture, and technology stack information. |
 | `/mode [private/public]` | Admin | View or dynamically toggle between Private and Public access mode. |
+| `/caption [clean/full]` | Admin | View or toggle clean minimal caption mode (only post text without author or buttons). |
 | `/stats` | Admin | Total registered users, total downloads, 24h active users, and token health. |
 | `/allow <user_id>` | Admin | Authorize a specific Telegram User ID when in Private mode. |
 | `/disallow <user_id>` | Admin | Revoke access for a specific Telegram User ID. |
