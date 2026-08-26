@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x2t"
-version = "0.1.0"
+version = "1.0.0"
 description = "High-performance, multi-media downloader engine for Twitter / X posts"
 authors = [
     { name = "TheMRVX" },

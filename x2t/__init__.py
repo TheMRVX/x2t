@@ -21,7 +21,7 @@ from x2t.exceptions import (
 from x2t.logger import get_logger, setup_logging
 from x2t.models import MediaItem, MediaType, PostMediaResult
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __all__ = [
     "extract_media",
     "download_media",
