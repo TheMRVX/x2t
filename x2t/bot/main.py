@@ -38,6 +38,7 @@ async def setup_bot_commands(bot: Bot):
         BotCommand(command="help", description="📖 راهنمای کامل استفاده و فیلترها"),
         BotCommand(command="about", description="ℹ️ درباره سیستم و موتور دانلود x2t"),
         BotCommand(command="mode", description="⚙️ مشاهده و تغییر حالت خصوصی/عمومی (ادمین)"),
+        BotCommand(command="caption", description="✍️ تغییر قالب کپشن (ساده یا کامل) (ادمین)"),
         BotCommand(command="stats", description="📊 آمار دانلودها و وضعیت توییتر (ادمین)"),
         BotCommand(command="allow", description="✅ افزودن کاربر به لیست مجاز (ادمین)"),
         BotCommand(command="disallow", description="🚫 لغو دسترسی کاربر (ادمین)"),
@@ -73,6 +74,11 @@ async def main():
     if saved_mode is not None:
         bot_config.is_private = (saved_mode.lower() == "true")
         logger.info(f"Loaded persistent bot mode from DB: is_private={bot_config.is_private}")
+
+    saved_caption = await db.get_setting("clean_caption")
+    if saved_caption is not None:
+        bot_config.clean_caption = (saved_caption.lower() == "true")
+        logger.info(f"Loaded persistent clean_caption from DB: {bot_config.clean_caption}")
 
     saved_allowed = await db.get_setting("allowed_user_ids")
     if saved_allowed:

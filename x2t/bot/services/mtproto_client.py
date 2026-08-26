@@ -78,15 +78,17 @@ class MTProtoClient:
         self,
         chat_id: Union[int, str],
         result: PostMediaResult,
-        caption: str,
+        caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        clean_mode: bool = False,
     ) -> List[Message]:
         """Send all post media via MTProto with support for files up to 2000 MB."""
         if not self.is_ready() or not result.items:
             return []
 
-        markup = self._convert_reply_markup(result.canonical_url)
+        markup = None if clean_mode else self._convert_reply_markup(result.canonical_url)
         sent_msgs: List[Message] = []
+        clean_caption_str = caption or ""
 
         # Case 1: Single Item
         if len(result.items) == 1:
@@ -97,7 +99,7 @@ class MTProtoClient:
                 msg = await self.app.send_animation(
                     chat_id=chat_id,
                     animation=local_path,
-                    caption=caption,
+                    caption=clean_caption_str,
                     reply_markup=markup,
                     reply_to_message_id=reply_to_message_id,
                 )
@@ -106,7 +108,7 @@ class MTProtoClient:
                 msg = await self.app.send_video(
                     chat_id=chat_id,
                     video=local_path,
-                    caption=caption,
+                    caption=clean_caption_str,
                     width=item.width or 0,
                     height=item.height or 0,
                     duration=int(item.duration_seconds or 0),
@@ -119,7 +121,7 @@ class MTProtoClient:
                 msg = await self.app.send_photo(
                     chat_id=chat_id,
                     photo=local_path,
-                    caption=caption,
+                    caption=clean_caption_str,
                     reply_markup=markup,
                     reply_to_message_id=reply_to_message_id,
                 )
@@ -129,7 +131,7 @@ class MTProtoClient:
         else:
             media_group = []
             for idx, item in enumerate(result.items):
-                item_caption = caption if idx == 0 else ""
+                item_caption = clean_caption_str if idx == 0 else ""
                 if item.type == MediaType.PHOTO:
                     media_group.append(
                         InputMediaPhoto(
@@ -156,13 +158,14 @@ class MTProtoClient:
             )
             sent_msgs.extend(msgs)
 
-            # Send inline link button
-            btn_msg = await self.app.send_message(
-                chat_id=chat_id,
-                text="🔗 <i>اطلاعات و لینک پست در توییتر:</i>",
-                reply_markup=markup,
-            )
-            sent_msgs.append(btn_msg)
+            # Send inline link button only in standard/full mode
+            if not clean_mode and markup:
+                btn_msg = await self.app.send_message(
+                    chat_id=chat_id,
+                    text="🔗 <i>اطلاعات و لینک پست در توییتر:</i>",
+                    reply_markup=markup,
+                )
+                sent_msgs.append(btn_msg)
 
         return sent_msgs
 

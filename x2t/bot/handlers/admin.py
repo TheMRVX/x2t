@@ -71,6 +71,37 @@ async def cmd_mode(message: Message, db: Database):
         await message.reply("⚠️ لطفاً <code>/mode private</code> یا <code>/mode public</code> را وارد کنید.", parse_mode="HTML")
 
 
+@router.message(Command("caption"))
+async def cmd_caption_mode(message: Message, db: Database):
+    """Toggle or view clean caption mode (raw text only without attributions or buttons)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        curr = "✨ ساده و مینیمال (فقط متن پست بدون نام نویسنده، فوتر یا دکمه)" if bot_config.clean_caption else "📋 کامل (با نام نویسنده، فوتر و دکمه لینک)"
+        await message.reply(
+            f"✍️ <b>حالت کپشن و پیام ارسالی:</b>\n{curr}\n\n"
+            "💡 برای تغییر حالت می‌توانید از دستورات زیر استفاده کنید:\n"
+            "• <code>/caption clean</code> (فقط و فقط متن اصلی پست)\n"
+            "• <code>/caption full</code> (کپشن کامل به همراه نام، آیدی و دکمه X)",
+            parse_mode="HTML",
+        )
+        return
+
+    target = parts[1].lower()
+    if target in ("clean", "minimal", "simple", "raw", "text", "on", "1", "true"):
+        bot_config.clean_caption = True
+        await db.set_setting("clean_caption", "true")
+        await message.reply("✨ <b>حالت کپشن روی «فقط متن پست (Clean Mode)» تنظیم شد.</b>\nاز این پس فایل‌ها بدون مشخصات نویسنده، فوتر و دکمه ارسال می‌شوند.", parse_mode="HTML")
+    elif target in ("full", "default", "standard", "all", "off", "0", "false"):
+        bot_config.clean_caption = False
+        await db.set_setting("clean_caption", "false")
+        await message.reply("📋 <b>حالت کپشن روی «کامل (Full Mode)» تنظیم شد.</b>", parse_mode="HTML")
+    else:
+        await message.reply("⚠️ لطفاً <code>/caption clean</code> یا <code>/caption full</code> را وارد کنید.", parse_mode="HTML")
+
+
 @router.message(Command("allow"))
 async def cmd_allow_user(message: Message, db: Database):
     """Authorize a specific user ID in private mode and persist in database."""

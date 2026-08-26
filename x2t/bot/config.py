@@ -64,6 +64,10 @@ class BotSettings(BaseSettings):
         default=None,
         description="Twitter ct0 CSRF token",
     )
+    clean_caption: bool = Field(
+        default=False,
+        description="If True, sends only raw post text without author, footer, or link buttons",
+    )
 
     @field_validator("admin_ids", "allowed_user_ids", mode="before")
     @classmethod

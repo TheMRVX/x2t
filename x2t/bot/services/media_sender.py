@@ -3,11 +3,12 @@
 import html
 import logging
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo, Message
 
+from x2t.bot.config import bot_config
 from x2t.bot.keyboards.inline import get_tweet_keyboard
 from x2t.bot.services.mtproto_client import mtproto_client
 from x2t.models import MediaType, PostMediaResult
@@ -15,8 +16,30 @@ from x2t.models import MediaType, PostMediaResult
 logger = logging.getLogger("x2t.bot")
 
 
-def format_tweet_caption(result: PostMediaResult, max_len: int = 800) -> str:
-    """Format clean HTML caption for Telegram media."""
+def format_tweet_caption(
+    result: PostMediaResult,
+    max_len: int = 800,
+    clean_caption: Optional[bool] = None,
+) -> Optional[str]:
+    """Format clean HTML caption for Telegram media.
+    
+    If clean_caption is True:
+        Returns ONLY the post text (or None if no text exists), omitting author header,
+        footer, and channel attribution.
+    """
+    if clean_caption is None:
+        clean_caption = getattr(bot_config, "clean_caption", False)
+
+    text_clean = ""
+    if result.text:
+        text_clean = html.escape(result.text.strip())
+        if len(text_clean) > max_len:
+            text_clean = text_clean[:max_len] + "..."
+
+    if clean_caption:
+        return text_clean if text_clean else None
+
+    # Standard full caption
     author_str = ""
     if result.author_name:
         author_str = f"👤 <b>{html.escape(result.author_name)}</b>"
@@ -24,13 +47,7 @@ def format_tweet_caption(result: PostMediaResult, max_len: int = 800) -> str:
             author_str += f" (<code>@{html.escape(result.author_username)}</code>)"
         author_str += "\n\n"
 
-    text_str = ""
-    if result.text:
-        clean_text = html.escape(result.text.strip())
-        if len(clean_text) > max_len:
-            clean_text = clean_text[:max_len] + "..."
-        text_str = f"{clean_text}\n\n"
-
+    text_str = f"{text_clean}\n\n" if text_clean else ""
     footer_str = "📥 <i>دانلود شده توسط @x2t_bot</i>"
     return f"{author_str}{text_str}{footer_str}"
 
@@ -57,8 +74,9 @@ async def send_post_media(
     if not result.items:
         return []
 
-    caption = format_tweet_caption(result)
-    reply_markup = get_tweet_keyboard(result.canonical_url)
+    is_clean = getattr(bot_config, "clean_caption", False)
+    caption = format_tweet_caption(result, clean_caption=is_clean)
+    reply_markup = None if is_clean else get_tweet_keyboard(result.canonical_url)
     sent_messages = []
 
     try:
@@ -71,6 +89,7 @@ async def send_post_media(
                     result=result,
                     caption=caption,
                     reply_to_message_id=reply_to_message_id,
+                    clean_mode=is_clean,
                 )
                 return msgs
             except Exception as e:
@@ -87,7 +106,7 @@ async def send_post_media(
                         chat_id=chat_id,
                         animation=file,
                         caption=caption,
-                        parse_mode="HTML",
+                        parse_mode="HTML" if caption else None,
                         reply_markup=reply_markup,
                         reply_to_message_id=reply_to_message_id,
                     )
@@ -100,7 +119,7 @@ async def send_post_media(
                         height=item.height,
                         duration=int(item.duration_seconds) if item.duration_seconds else None,
                         caption=caption,
-                        parse_mode="HTML",
+                        parse_mode="HTML" if caption else None,
                         reply_markup=reply_markup,
                         supports_streaming=True,
                         reply_to_message_id=reply_to_message_id,
@@ -111,7 +130,7 @@ async def send_post_media(
                         chat_id=chat_id,
                         photo=file,
                         caption=caption,
-                        parse_mode="HTML",
+                        parse_mode="HTML" if caption else None,
                         reply_markup=reply_markup,
                         reply_to_message_id=reply_to_message_id,
                     )
@@ -119,8 +138,9 @@ async def send_post_media(
             except TelegramBadRequest as e:
                 if "Request Entity Too Large" in str(e) or "file is too big" in str(e).lower():
                     logger.warning(f"File too big for local upload ({item.size_bytes} bytes). Sending streaming link...")
+                    fallback_caption = caption or ""
                     fallback_text = (
-                        f"{caption}\n\n"
+                        f"{fallback_caption}\n\n"
                         "⚠️ <b>حجم این ویدیو بیش از ۵۰ مگابایت است.</b>\n"
                         f"📥 <a href=\"{item.url}\">برای دانلود مستقیم با بالاترین کیفیت اینجا کلیک کنید</a>"
                     )
@@ -140,7 +160,7 @@ async def send_post_media(
             for idx, item in enumerate(result.items):
                 file = FSInputFile(item.local_path)
                 item_caption = caption if idx == 0 else None
-                item_parse_mode = "HTML" if idx == 0 else None
+                item_parse_mode = "HTML" if (idx == 0 and caption) else None
 
                 if item.type == MediaType.PHOTO:
                     media_group.append(
@@ -170,13 +190,14 @@ async def send_post_media(
             )
             sent_messages.extend(group_msgs)
 
-            btn_msg = await bot.send_message(
-                chat_id=chat_id,
-                text="🔗 <i>اطلاعات و لینک پست در توییتر:</i>",
-                parse_mode="HTML",
-                reply_markup=reply_markup,
-            )
-            sent_messages.append(btn_msg)
+            if not is_clean:
+                btn_msg = await bot.send_message(
+                    chat_id=chat_id,
+                    text="🔗 <i>اطلاعات و لینک پست در توییتر:</i>",
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+                sent_messages.append(btn_msg)
 
         return sent_messages
 
