@@ -23,7 +23,9 @@ BEARER = (
     "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 )
 
-USER_TWEETS_QUERY_ID = "V7H0Ap3_Hh2FyS75OCDO3Q"
+USER_MEDIA_QUERY_ID = "VyudDWQnr9vJNw7GasFz2g"
+USER_TWEETS_QUERY_ID = "SXVCYB8XHSS25nzIljNtZA"
+USER_BY_SCREEN_NAME_QUERY_ID = "Gb-d6r0vxPOADdG62OEBpQ"
 
 
 class ProfileExtractor:
@@ -148,7 +150,7 @@ class ProfileExtractor:
         # Method 2: Fallback to GraphQL UserByScreenName
         try:
             headers = self._build_graphql_headers()
-            url = "https://x.com/i/api/graphql/sLVLhk0bGj3MVFEKTdax1w/UserByScreenName"
+            url = f"https://x.com/i/api/graphql/{USER_BY_SCREEN_NAME_QUERY_ID}/UserByScreenName"
             params = {
                 "variables": json.dumps({"screen_name": clean_user, "withSafetyModeUserFields": True}),
                 "features": json.dumps({
@@ -370,125 +372,185 @@ class ProfileExtractor:
         if cursor:
             variables["cursor"] = cursor
 
-        url = f"https://x.com/i/api/graphql/{USER_TWEETS_QUERY_ID}/UserTweets"
-        params = {
+        # 1. Try UserMedia endpoint first (dedicated media tab with high rate limit)
+        url_media = f"https://x.com/i/api/graphql/{USER_MEDIA_QUERY_ID}/UserMedia"
+        params_media = {
             "variables": json.dumps(variables),
             "features": json.dumps(features),
         }
 
+        data = None
         try:
-            r = self.client.get(url, params=params, headers=headers)
+            r = self.client.get(url_media, params=params_media, headers=headers)
             if r.status_code == 200:
                 data = r.json()
-                instructions = (
-                    data.get("data", {})
-                    .get("user", {})
-                    .get("result", {})
-                    .get("timeline_v2", {})
-                    .get("timeline", {})
-                    .get("instructions", [])
-                )
-                for inst in instructions:
-                    entries = inst.get("entries", [])
-                    for e in entries:
+            elif r.status_code == 429:
+                logger.warning(f"UserMedia rate-limited for {profile.username}, attempting UserTweets fallback...")
+            else:
+                logger.debug(f"UserMedia returned status {r.status_code} for {profile.username}")
+        except Exception as e:
+            logger.debug(f"UserMedia request error: {e}")
+
+        # 2. Fallback to UserTweets endpoint if UserMedia was not successful
+        if not data or not data.get("data", {}).get("user", {}).get("result"):
+            url_tweets = f"https://x.com/i/api/graphql/{USER_TWEETS_QUERY_ID}/UserTweets"
+            params_tweets = {
+                "variables": json.dumps(variables),
+                "features": json.dumps(features),
+            }
+            try:
+                r2 = self.client.get(url_tweets, params=params_tweets, headers=headers)
+                if r2.status_code == 200:
+                    data = r2.json()
+                else:
+                    logger.warning(f"UserTweets also returned status {r2.status_code} for {profile.username}")
+            except Exception as e:
+                logger.error(f"UserTweets request error: {e}")
+
+        if not data:
+            return [], None
+
+        try:
+            user_res = data.get("data", {}).get("user", {}).get("result", {})
+            timeline_container = user_res.get("timeline") or user_res.get("timeline_v2") or {}
+            if "timeline" in timeline_container:
+                timeline_container = timeline_container["timeline"]
+            instructions = timeline_container.get("instructions", [])
+
+            raw_tweet_nodes: List[Dict[str, Any]] = []
+
+            for inst in instructions:
+                inst_type = inst.get("type", "")
+
+                # 1. Standard TimelineAddEntries
+                if "entries" in inst:
+                    for e in inst["entries"]:
                         entry_id = e.get("entryId", "")
+                        content = e.get("content", {})
+
                         # Capture bottom cursor
-                        if "cursor-bottom" in entry_id.lower() or e.get("content", {}).get("cursorType") == "Bottom":
-                            next_bottom_cursor = e.get("content", {}).get("value")
+                        if "cursor-bottom" in entry_id.lower() or content.get("cursorType") == "Bottom":
+                            next_bottom_cursor = content.get("value")
 
-                        item_content = e.get("content", {}).get("itemContent", {})
-                        tweet_results = item_content.get("tweet_results", {})
-                        result = tweet_results.get("result", {})
-                        if not result:
-                            continue
+                        # Direct itemContent
+                        if "itemContent" in content:
+                            raw_tweet_nodes.append(content["itemContent"].get("tweet_results", {}).get("result", {}))
 
-                        typename = result.get("__typename")
-                        if typename == "TweetWithVisibilityResults":
-                            result = result.get("tweet", {})
+                        # Module items (like profile-grid-0)
+                        if "items" in content:
+                            for sub in content["items"]:
+                                sub_content = sub.get("item", {}).get("itemContent", {}) or sub.get("itemContent", {})
+                                tw_node = sub_content.get("tweet_results", {}).get("result", {})
+                                if tw_node:
+                                    raw_tweet_nodes.append(tw_node)
 
-                        legacy = result.get("legacy", {})
-                        if not legacy:
-                            continue
+                # 2. TimelineAddToModule (Pagination for Media Timeline)
+                if "moduleItems" in inst:
+                    for sub in inst["moduleItems"]:
+                        sub_content = sub.get("item", {}).get("itemContent", {}) or sub.get("itemContent", {})
+                        tw_node = sub_content.get("tweet_results", {}).get("result", {})
+                        if tw_node:
+                            raw_tweet_nodes.append(tw_node)
 
-                        tweet_id = result.get("rest_id") or legacy.get("id_str")
-                        if not tweet_id:
-                            continue
+                # 3. TimelineReplaceEntry (Cursor update)
+                if inst_type == "TimelineReplaceEntry":
+                    entry = inst.get("entry", {})
+                    entry_id = entry.get("entryId", "")
+                    content = entry.get("content", {})
+                    if "cursor-bottom" in entry_id.lower() or content.get("cursorType") == "Bottom":
+                        next_bottom_cursor = content.get("value")
 
-                        text = legacy.get("full_text", "")
-                        is_rt = "retweeted_status_result" in legacy or text.startswith("RT @")
-                        is_quote = legacy.get("is_quote_status", False)
+            for result in raw_tweet_nodes:
+                if not result:
+                    continue
 
-                        extended_entities = legacy.get("extended_entities", {})
-                        media_list = extended_entities.get("media", [])
-                        if not media_list:
-                            media_list = legacy.get("entities", {}).get("media", [])
+                typename = result.get("__typename")
+                if typename == "TweetWithVisibilityResults":
+                    result = result.get("tweet", {})
 
-                        if not media_list:
-                            continue
+                legacy = result.get("legacy", {})
+                if not legacy:
+                    continue
 
-                        source_user = None
-                        first_media = media_list[0] if media_list else {}
-                        add_info = first_media.get("additional_media_info", {})
-                        if add_info and "source_user" in add_info:
-                            source_user = add_info.get("source_user", {}).get("legacy", {}).get("screen_name")
-                        elif first_media.get("source_user_id_str") and first_media.get("source_user_id_str") != str(user_id):
-                            source_user = "third_party"
+                tweet_id = result.get("rest_id") or legacy.get("id_str")
+                if not tweet_id:
+                    continue
 
-                        items: List[MediaItem] = []
-                        for idx, m in enumerate(media_list, start=1):
-                            m_type_str = m.get("type", "").lower()
-                            is_video = m_type_str in ("video", "animated_gif")
-                            is_gif = m_type_str == "animated_gif"
+                text = legacy.get("full_text", "")
+                is_rt = "retweeted_status_result" in legacy or text.startswith("RT @")
+                is_quote = legacy.get("is_quote_status", False)
 
-                            if is_video:
-                                video_info = m.get("video_info", {})
-                                variants = video_info.get("variants", [])
-                                best_v = select_best_video_variant(variants, duration_seconds=video_info.get("duration_millis", 0) / 1000.0)
-                                if best_v and "url" in best_v:
-                                    items.append(
-                                        MediaItem(
-                                            id=str(idx),
-                                            type=MediaType.GIF if is_gif else MediaType.VIDEO,
-                                            url=best_v["url"],
-                                            width=m.get("original_info", {}).get("width"),
-                                            height=m.get("original_info", {}).get("height"),
-                                            bitrate=best_v.get("bitrate"),
-                                            duration_seconds=video_info.get("duration_millis", 0) / 1000.0 if video_info.get("duration_millis") else None,
-                                            thumbnail_url=m.get("media_url_https"),
-                                            is_gif=is_gif,
-                                        )
-                                    )
-                            else:
-                                photo_url = m.get("media_url_https")
-                                if photo_url:
-                                    orig_url = get_orig_photo_url(photo_url)
-                                    items.append(
-                                        MediaItem(
-                                            id=str(idx),
-                                            type=MediaType.PHOTO,
-                                            url=orig_url,
-                                            width=m.get("original_info", {}).get("width"),
-                                            height=m.get("original_info", {}).get("height"),
-                                            thumbnail_url=photo_url,
-                                            is_gif=False,
-                                        )
-                                    )
+                extended_entities = legacy.get("extended_entities", {})
+                media_list = extended_entities.get("media", [])
+                if not media_list:
+                    media_list = legacy.get("entities", {}).get("media", [])
 
-                        if items:
-                            raw_items.append(
-                                ProfileTweetItem(
-                                    tweet_id=tweet_id,
-                                    canonical_url=f"https://x.com/{profile.username}/status/{tweet_id}",
-                                    text=text,
-                                    created_at=legacy.get("created_at"),
-                                    is_retweet=is_rt,
-                                    is_quote=is_quote,
-                                    source_user=source_user,
-                                    author_username=profile.username,
-                                    author_name=profile.name,
-                                    media_items=items,
+                if not media_list:
+                    continue
+
+                source_user = None
+                first_media = media_list[0] if media_list else {}
+                add_info = first_media.get("additional_media_info", {})
+                if add_info and "source_user" in add_info:
+                    source_user = add_info.get("source_user", {}).get("legacy", {}).get("screen_name")
+                elif first_media.get("source_user_id_str") and first_media.get("source_user_id_str") != str(user_id):
+                    source_user = "third_party"
+
+                items: List[MediaItem] = []
+                for idx, m in enumerate(media_list, start=1):
+                    m_type_str = m.get("type", "").lower()
+                    is_video = m_type_str in ("video", "animated_gif")
+                    is_gif = m_type_str == "animated_gif"
+
+                    if is_video:
+                        video_info = m.get("video_info", {})
+                        variants = video_info.get("variants", [])
+                        best_v = select_best_video_variant(variants, duration_seconds=video_info.get("duration_millis", 0) / 1000.0)
+                        if best_v and "url" in best_v:
+                            items.append(
+                                MediaItem(
+                                    id=str(idx),
+                                    type=MediaType.GIF if is_gif else MediaType.VIDEO,
+                                    url=best_v["url"],
+                                    width=m.get("original_info", {}).get("width"),
+                                    height=m.get("original_info", {}).get("height"),
+                                    bitrate=best_v.get("bitrate"),
+                                    duration_seconds=video_info.get("duration_millis", 0) / 1000.0 if video_info.get("duration_millis") else None,
+                                    thumbnail_url=m.get("media_url_https"),
+                                    is_gif=is_gif,
                                 )
                             )
+                    else:
+                        photo_url = m.get("media_url_https")
+                        if photo_url:
+                            orig_url = get_orig_photo_url(photo_url)
+                            items.append(
+                                MediaItem(
+                                    id=str(idx),
+                                    type=MediaType.PHOTO,
+                                    url=orig_url,
+                                    width=m.get("original_info", {}).get("width"),
+                                    height=m.get("original_info", {}).get("height"),
+                                    thumbnail_url=photo_url,
+                                    is_gif=False,
+                                )
+                            )
+
+                if items:
+                    raw_items.append(
+                        ProfileTweetItem(
+                            tweet_id=tweet_id,
+                            canonical_url=f"https://x.com/{profile.username}/status/{tweet_id}",
+                            text=text,
+                            created_at=legacy.get("created_at"),
+                            is_retweet=is_rt,
+                            is_quote=is_quote,
+                            source_user=source_user,
+                            author_username=profile.username,
+                            author_name=profile.name,
+                            media_items=items,
+                        )
+                    )
 
         except Exception as e:
             logger.error(f"Failed to fetch timeline page for {profile.username}: {e}", exc_info=True)
@@ -497,3 +559,4 @@ class ProfileExtractor:
 
 
 profile_extractor = ProfileExtractor()
+
