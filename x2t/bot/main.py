@@ -7,7 +7,12 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeDefault,
+    MenuButtonCommands,
+)
 
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
@@ -46,8 +51,12 @@ async def setup_bot_commands(bot: Bot):
         BotCommand(command="broadcast", description="📢 ارسال پیام همگانی (ادمین)"),
     ]
     try:
+        # Register commands for all scopes
         await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
-        logger.info("Bot menu commands registered successfully.")
+        await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
+        # Force enable the standard Menu Button in Telegram clients
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logger.info("Bot menu commands and MenuButtonCommands registered successfully.")
     except Exception as e:
         logger.warning(f"Could not register bot menu commands: {e}")
 

@@ -83,6 +83,35 @@ async def cmd_history(message: Message, db: Database):
     await message.reply(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
+@router.callback_query(F.data == "history_btn")
+async def cb_history(callback: CallbackQuery, db: Database):
+    user_id = callback.from_user.id if callback.from_user else 0
+    history = await db.get_user_history(user_id=user_id, limit=5)
+
+    if not history:
+        await callback.message.edit_text(
+            "📜 <b>تاریخچه دانلودهای شما:</b>\n\n"
+            "هنوز هیچ فایلی توسط شما دانلود نشده است!\n"
+            "برای شروع، لینک یک پست توییتر را ارسال کنید.",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    text = "📜 <b>آخرین دانلودهای شما در ربات:</b>\n\n"
+    for idx, item in enumerate(history, start=1):
+        tweet_id = item["tweet_id"]
+        count = item["media_count"]
+        ts = item["timestamp"]
+        url = f"https://x.com/i/status/{tweet_id}"
+        text += f"{idx}. 🔗 <a href=\"{url}\">توییت {tweet_id}</a> ({count} مدیا) — <i>{ts}</i>\n"
+
+    text += "\n💡 <i>روی هر لینک کلیک کنید تا توییت اصلی در توییتر باز شود.</i>"
+    await callback.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=get_back_keyboard())
+    await callback.answer()
+
+
 @router.callback_query(F.data == "help")
 async def cb_help(callback: CallbackQuery):
     await callback.message.edit_text(HELP_TEXT, parse_mode="HTML", reply_markup=get_back_keyboard())

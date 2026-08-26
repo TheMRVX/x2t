@@ -17,9 +17,12 @@ def get_start_keyboard() -> InlineKeyboardMarkup:
     """Create main start menu keyboard."""
     buttons = [
         [
+            InlineKeyboardButton(text="📜 آخرین دانلودها", callback_data="history_btn"),
+        ],
+        [
             InlineKeyboardButton(text="📖 راهنمای استفاده", callback_data="help"),
             InlineKeyboardButton(text="ℹ️ درباره ربات", callback_data="about"),
-        ]
+        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
