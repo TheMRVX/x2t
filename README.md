@@ -1,42 +1,42 @@
-# ⚡ x2t (X-to-Telegram Media Engine & Bot)
+# x2t (X-to-Telegram Media Engine & Bot)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="Built with Antigravity" />
 </p>
 
 <p align="center">
-  <a href="README.md">🇬🇧 English Documentation</a> •
-  <a href="README_FA.md">🇮🇷 راهنمای فارسی</a>
+  <a href="README.md">English Documentation</a> •
+  <a href="README_FA.md">راهنمای فارسی</a>
 </p>
 
-> **High-Performance, Zero-Third-Party Twitter / X Media Extractor, Advanced Profile Scraper, and MTProto Telegram Bot (up to 2000 MB / 2 GB direct uploads) — Built with Google Antigravity.**
+> High-Performance, Zero-Third-Party Twitter / X Media Extractor, Advanced Profile Scraper, and MTProto Telegram Bot (up to 2000 MB / 2 GB direct uploads) — Built with Google Antigravity.
 
 `x2t` is a modular, high-reliability Python engine and Telegram bot built to extract, download, and deliver media assets (Full HD/4K videos, original resolution photos, and looping GIFs) from any X/Twitter post or entire user profile with granular attribution filtering and real-time streaming delivery.
 
 ---
 
-## 🌟 Key Highlights
+## Features
 
-- **🚀 MTProto 2000 MB (2 GB) File Delivery:** Integrated native MTProto client (`Pyrogram` + `TgCrypto`) allowing ultra-fast direct Telegram uploads up to **2 GB** per file, bypassing the standard 50 MB HTTP Bot API limit.
-- **👤 Advanced Profile Downloader:** Enter any `@username` or profile URL to scan and download the user's entire timeline linearly with multi-page cursor pagination.
-- **🎯 Granular Content & Attribution Filtering:**
-  - 🔁 **Retweet / Repost Filter:** Exclude retweets by default so only original content is downloaded.
-  - 🏷️ **Third-Party Sourced Media Filter (`From @other`):** Exclude tweets embedding another creator's video.
-  - 💬 **Quote Tweet Filter:** Exclude quoted posts embedding secondary media.
-  - 📹 🖼️ 🎞️ **Media Type Selector:** Selectively toggle Videos, Photos, or GIFs independently.
-  - 🔢 **Batch Limits:** Customizable count (`♾️ All Available`, `10`, `25`, `50`, `100` posts).
-- **📌 Interactive Telegram UI & Pinned Progress:**
-  - Real-time inline checkbox toggles (`✅` / `❌`).
-  - Automatic progress card pinned to the top of the chat with live post/file counters and a **`🛑 Stop / Cancel`** button.
-- **🛡️ NSFW & Sensitive Content Resolution:** Custom resolver backend with persistent cookie management (`/set_cookie`) to unlock age-restricted and sensitive media seamlessly.
-- **📦 Multi-Media Albums (MediaGroups):** Automatically bundles multi-photo/video tweets (up to 4 items) into clean native Telegram albums.
-- **⚡ In-Memory TTL Caching:** Smart 5-minute cache avoids duplicate API requests and prevents Twitter rate limits on viral posts.
-- **🧹 Zero-Waste Disk Lifecycle:** Downloaded temporary media files are automatically purged from disk immediately after delivery.
-- **📊 SQLite Database (WAL Mode) & Admin Dashboard:** Persistent async database with WAL concurrency, download history tracking, `/stats`, `/history`, and `/broadcast` admin tools.
+- **MTProto 2000 MB (2 GB) File Delivery:** Integrated native MTProto client (`Pyrogram` + `TgCrypto`) allowing high-speed direct Telegram uploads up to 2 GB per file, bypassing the standard 50 MB HTTP Bot API limit.
+- **Advanced Profile Downloader:** Enter any username or profile URL to scan and download the user's entire timeline linearly with multi-page cursor pagination.
+- **Granular Content & Attribution Filtering:**
+  - **Retweet / Repost Filter:** Exclude retweets by default so only original content is downloaded.
+  - **Third-Party Sourced Media Filter (`From @other`):** Exclude tweets embedding another creator's video.
+  - **Quote Tweet Filter:** Exclude quoted posts embedding secondary media.
+  - **Media Type Selector:** Selectively toggle Videos, Photos, or GIFs independently.
+  - **Batch Limits:** Customizable count (Unlimited, 10, 25, 50, 100 posts).
+- **Interactive Telegram UI & Pinned Progress:**
+  - Real-time inline checkbox toggles.
+  - Progress card pinned to the top of the chat with live post/file counters and a Stop / Cancel control.
+- **NSFW & Sensitive Content Resolution:** Custom resolver backend with persistent cookie management (`/set_cookie`) to unlock age-restricted and sensitive media.
+- **Multi-Media Albums (MediaGroups):** Automatically bundles multi-photo/video tweets into clean native Telegram albums.
+- **In-Memory TTL Caching:** Smart 5-minute cache avoids duplicate API requests and prevents Twitter rate limits.
+- **Automated Storage Cleanup:** Downloaded temporary media files are automatically purged from disk immediately after delivery.
+- **SQLite Database (WAL Mode) & Admin Dashboard:** Persistent async database with WAL concurrency, download history tracking, `/stats`, `/history`, and `/broadcast` admin tools.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -64,7 +64,7 @@ flowchart TD
 
 ---
 
-## 📦 Installation & Setup
+## Installation & Setup
 
 ### 1. Prerequisites
 - Python 3.10+
@@ -99,18 +99,18 @@ ALLOWED_USER_IDS=[]
 
 DB_PATH=bot_database.sqlite3
 TEMP_DOWNLOAD_DIR=./downloads/temp_bot
-RATE_LIMIT_SECONDS=2.0
+RATE_LIMIT_SECONDS=1.0
 
 # Optional: Twitter Auth Token for NSFW / Age-Restricted Profile Timelines
 TWITTER_AUTH_TOKEN=your_auth_token_here
 
 # Optional: Clean Caption Mode (true = raw post text only without author or buttons)
-CLEAN_CAPTION=false
+CLEAN_CAPTION=true
 ```
 
 ---
 
-## 🤖 Running the Telegram Bot
+## Running the Telegram Bot
 
 ### Direct Execution
 ```bash
@@ -129,9 +129,9 @@ docker compose logs -f
 
 ---
 
-## 💻 CLI Usage
+## CLI Usage
 
-You can extract or download tweets directly from the command line:
+Extract or download tweets directly from the command line:
 
 ```bash
 # 1. Inspect tweet media links and metadata (without downloading)
@@ -146,9 +146,9 @@ x2t "https://x.com/username/status/1234567890" --json
 
 ---
 
-## 🐍 Python Library SDK
+## Python Library SDK
 
-Use `x2t` as a standalone Python package in your own projects:
+Use `x2t` as a standalone Python package:
 
 ```python
 import asyncio
@@ -188,7 +188,7 @@ asyncio.run(stream_profile())
 
 ---
 
-## ⚙️ Bot Commands & Admin Controls
+## Bot Commands & Admin Controls
 
 | Command | Role | Description |
 | :--- | :---: | :--- |
