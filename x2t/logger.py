@@ -18,7 +18,7 @@ class SensitiveDataFilter(logging.Filter):
         (re.compile(r"\b\d{8,12}:[A-Za-z0-9_-]{30,45}\b"), "[REDACTED_BOT_TOKEN]"),
         # Twitter auth_token hex string (e.g. auth_token=abcdef0123456789abcdef0123456789abcdef01)
         (re.compile(r"(auth_token=['\"]?)[a-f0-9]{32,64}(['\"]?)", re.IGNORECASE), r"\1[REDACTED_AUTH_TOKEN]\2"),
-        # Telegram API Hash (e.g. abcdef0123456789abcdef0123456789)
+        # Telegram API Hash (e.g. api_hash=abcdef0123456789abcdef0123456789)
         (re.compile(r"(api_hash=['\"]?)[a-f0-9]{32}(['\"]?)", re.IGNORECASE), r"\1[REDACTED_API_HASH]\2"),
         # Twitter ct0 token
         (re.compile(r"(ct0=['\"]?)[a-f0-9]{32,160}(['\"]?)", re.IGNORECASE), r"\1[REDACTED_CT0]\2"),
