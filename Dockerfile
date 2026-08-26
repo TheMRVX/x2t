@@ -5,6 +5,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
 
+LABEL org.opencontainers.image.source="https://github.com/TheMRVX/x2t" \
+      org.opencontainers.image.description="High-performance, multi-media downloader engine for Twitter / X posts" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 # Install system dependencies (FFmpeg for media processing, gcc/build-essential for tgcrypto C-extensions)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
