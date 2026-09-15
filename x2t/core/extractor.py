@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple, Union
 
 from x2t.core.downloader import MediaDownloader
 from x2t.core.fxtwitter_backend import FxTwitterBackend
+from x2t.core.graphql_backend import TwitterGraphQLBackend
 from x2t.core.syndication_backend import SyndicationBackend
 from x2t.core.ytdlp_backend import YtdlpBackend
 from x2t.exceptions import (
@@ -27,13 +28,24 @@ logger = get_logger("x2t.extractor")
 class XMediaExtractor:
     """High-level extractor coordinator supporting multi-backend cascades and smart TTL caching."""
 
-    def __init__(self, cookies_file: Optional[str] = None, cache_ttl_seconds: float = 300.0):
+    def __init__(
+        self,
+        cookies_file: Optional[str] = None,
+        auth_token: Optional[str] = None,
+        ct0: Optional[str] = None,
+        cache_ttl_seconds: float = 300.0,
+    ):
+        self.graphql_backend = TwitterGraphQLBackend(cookies_file=cookies_file, auth_token=auth_token, ct0=ct0)
         self.fxtwitter_backend = FxTwitterBackend()
         self.ytdlp_backend = YtdlpBackend(cookies_file=cookies_file)
         self.syndication_backend = SyndicationBackend()
         self.cache_ttl_seconds = cache_ttl_seconds
         # In-memory TTL cache: tweet_id -> (PostMediaResult, expire_timestamp)
         self._cache: Dict[str, Tuple[PostMediaResult, float]] = {}
+
+    def set_twitter_auth_token(self, auth_token: str, ct0: Optional[str] = None):
+        """Set Twitter auth token for authenticated GraphQL queries."""
+        self.graphql_backend.set_twitter_auth_token(auth_token, ct0)
 
     def _get_from_cache(self, tweet_id: str) -> Optional[PostMediaResult]:
         """Retrieve post result from in-memory TTL cache if not expired."""
@@ -61,9 +73,11 @@ class XMediaExtractor:
 
         Tries backends in cascade:
         1. Memory TTL Cache (instant response for duplicate requests)
-        2. FxTwitter / VxTwitter backend (fast, handles sensitive/age-restricted media)
-        3. yt-dlp native backend
-        4. Direct syndication fallback backend
+        2. Authenticated Twitter GraphQL backend (highest reliability, bypasses 3rd parties)
+        3. FxTwitter / Fixupx / VxTwitter backend (fast, handles sensitive/age-restricted media)
+        4. Unauthenticated Twitter GraphQL backend (guest mode)
+        5. yt-dlp native backend
+        6. Direct syndication fallback backend
         """
         tweet_id = extract_tweet_id(url_or_id)
 
@@ -76,20 +90,52 @@ class XMediaExtractor:
         errors = []
         parsed_empty_result = None
 
-        # 1. Try FxTwitter / VxTwitter backend
+        # 1. Try Twitter GraphQL backend if authenticated session exists
+        if self.graphql_backend.has_auth_token():
+            try:
+                result = self.graphql_backend.extract(url_or_id)
+                if result and result.has_media:
+                    if use_cache and tweet_id:
+                        self._save_to_cache(tweet_id, result)
+                    return result
+                if result and not result.has_media:
+                    parsed_empty_result = result
+            except (TweetNotFoundError, PrivateTweetError, AgeRestrictedError):
+                raise
+            except Exception as e:
+                logger.debug(f"GraphQL backend error for {url_or_id}: {e}")
+                errors.append(f"GraphQL: {e}")
+
+        # 2. Try FxTwitter / Fixupx / VxTwitter backend
         try:
             result = self.fxtwitter_backend.extract(url_or_id)
             if result and result.has_media:
                 if use_cache and tweet_id:
                     self._save_to_cache(tweet_id, result)
                 return result
-            if result and not result.has_media:
+            if result and not result.has_media and not parsed_empty_result:
                 parsed_empty_result = result
         except Exception as e:
             logger.debug(f"FxTwitter backend error for {url_or_id}: {e}")
             errors.append(f"FxTwitter: {e}")
 
-        # 2. Try yt-dlp backend
+        # 3. Try Twitter GraphQL backend (guest mode) if not already run
+        if not self.graphql_backend.has_auth_token():
+            try:
+                result = self.graphql_backend.extract(url_or_id)
+                if result and result.has_media:
+                    if use_cache and tweet_id:
+                        self._save_to_cache(tweet_id, result)
+                    return result
+                if result and not result.has_media and not parsed_empty_result:
+                    parsed_empty_result = result
+            except (TweetNotFoundError, PrivateTweetError, AgeRestrictedError):
+                raise
+            except Exception as e:
+                logger.debug(f"GraphQL Guest backend error for {url_or_id}: {e}")
+                errors.append(f"GraphQL Guest: {e}")
+
+        # 4. Try yt-dlp backend
         try:
             result = self.ytdlp_backend.extract(url_or_id)
             if result and result.has_media:
@@ -102,7 +148,7 @@ class XMediaExtractor:
             logger.debug(f"yt-dlp backend error for {url_or_id}: {e}")
             errors.append(f"yt-dlp: {e}")
 
-        # 3. Try syndication fallback backend
+        # 5. Try syndication fallback backend
         try:
             result = self.syndication_backend.extract(url_or_id)
             if result and result.has_media:

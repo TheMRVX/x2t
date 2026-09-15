@@ -86,6 +86,8 @@ class SyndicationBackend:
             )
 
         data = response.json()
+        if not data or data.get("__typename") == "TweetTombstone" or data.get("tombstone") or (not data.get("id_str") and not data.get("user") and not data.get("text")):
+            raise RuntimeError(f"Syndication API returned tombstone or restricted data for tweet {tweet_id}")
         return self._parse_tweet_data(data, tweet_id, url_or_id)
 
     def _parse_tweet_data(

@@ -6,6 +6,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+import x2t
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
 from x2t.core.profile_extractor import profile_extractor
@@ -160,6 +161,7 @@ async def cmd_set_cookie(message: Message, db: Database):
     ct0 = parts[2].strip() if len(parts) > 2 else None
 
     profile_extractor.set_twitter_auth_token(auth_token, ct0)
+    x2t.set_twitter_auth_token(auth_token, ct0)
     await db.set_setting("twitter_auth_token", auth_token)
     if ct0:
         await db.set_setting("twitter_ct0", ct0)

@@ -14,6 +14,7 @@ from aiogram.types import (
     MenuButtonCommands,
 )
 
+import x2t
 from x2t.bot.config import bot_config
 from x2t.bot.database.db import Database
 from x2t.bot.handlers import setup_routers
@@ -105,9 +106,11 @@ async def main():
     saved_ct0 = await db.get_setting("twitter_ct0")
     if saved_token:
         profile_extractor.set_twitter_auth_token(saved_token, saved_ct0)
+        x2t.set_twitter_auth_token(saved_token, saved_ct0)
         logger.info("Loaded Twitter auth_token from persistent DB settings.")
     elif bot_config.twitter_auth_token:
         profile_extractor.set_twitter_auth_token(bot_config.twitter_auth_token, bot_config.twitter_ct0)
+        x2t.set_twitter_auth_token(bot_config.twitter_auth_token, bot_config.twitter_ct0)
         logger.info("Configured Twitter auth_token from environment settings.")
 
     # 4. Check and log Twitter session health status

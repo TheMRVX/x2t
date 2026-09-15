@@ -33,21 +33,24 @@ class FxTwitterBackend:
         canonical_url = normalize_tweet_url(url_or_id)
         author = extract_tweet_author(url_or_id) or "i"
 
-        # 1. Try fxtwitter API
-        try:
-            endpoints = [
-                f"https://api.fxtwitter.com/status/{tweet_id}",
-                f"https://api.fxtwitter.com/{author}/status/{tweet_id}",
-            ]
-            for ep in endpoints:
+        # 1. Try fxtwitter / fixupx API
+        endpoints = [
+            f"https://api.fxtwitter.com/status/{tweet_id}",
+            f"https://api.fxtwitter.com/{author}/status/{tweet_id}",
+            f"https://api.fixupx.com/status/{tweet_id}",
+            f"https://api.fixupx.com/{author}/status/{tweet_id}",
+            f"https://api.twittpr.com/status/{tweet_id}",
+        ]
+        for ep in endpoints:
+            try:
                 resp = self.client.get(ep)
                 if resp.status_code == 200:
                     data = resp.json()
                     tweet = data.get("tweet")
                     if tweet:
                         return self._parse_fxtwitter_data(tweet, tweet_id, url_or_id, canonical_url)
-        except Exception as e:
-            logger.debug(f"FxTwitter request failed: {e}")
+            except Exception as e:
+                logger.debug(f"Endpoint {ep} request failed: {e}")
 
         # 2. Try vxtwitter API fallback
         try:

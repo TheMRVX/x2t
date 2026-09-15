@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from x2t.core.extractor import XMediaExtractor
+from x2t.core.graphql_backend import TwitterGraphQLBackend
 from x2t.exceptions import (
     AgeRestrictedError,
     ExtractionError,
@@ -26,7 +27,9 @@ __all__ = [
     "extract_media",
     "download_media",
     "download_media_async",
+    "set_twitter_auth_token",
     "XMediaExtractor",
+    "TwitterGraphQLBackend",
     "PostMediaResult",
     "MediaItem",
     "MediaType",
@@ -47,6 +50,11 @@ __all__ = [
 ]
 
 _default_extractor = XMediaExtractor()
+
+
+def set_twitter_auth_token(auth_token: str, ct0: Optional[str] = None):
+    """Set Twitter auth credentials in the default extractor engine."""
+    _default_extractor.set_twitter_auth_token(auth_token, ct0)
 
 
 def extract_media(url_or_id: str) -> PostMediaResult:

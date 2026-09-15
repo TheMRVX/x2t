@@ -6,6 +6,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./x2t:/app/x2t
       - ./bot_database.sqlite3:/app/bot_database.sqlite3
       - ./downloads:/app/downloads
       - ./logs:/app/logs
