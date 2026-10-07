@@ -4,11 +4,14 @@
 
 **موتور قدرتمند استخراج مدیا از توییتر (X)، اسکرپر تایم‌لاین پروفایل، و ربات تلگرام با قابلیت ارسال مستقیم فایل تا ۲ گیگابایت (MTProto).**
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
-![Telegram](https://img.shields.io/badge/Telegram-aiogram%203%20%2B%20Pyrogram-2CA5E0?logo=telegram&logoColor=white)
-![MTProto](https://img.shields.io/badge/upload%20limit-2%20GB%20(MTProto)-0088cc)
-![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
+[![CI](https://github.com/TheMRVX/x2t/actions/workflows/ci.yml/badge.svg)](https://github.com/TheMRVX/x2t/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-E03C31.svg?logo=gnu&logoColor=white)](LICENSE)
+![Platform](https://img.shields.io/badge/Platform-X%20%2F%20Twitter-000000?logo=x&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram-aiogram%203-24A1DE?logo=telegram&logoColor=white)
+![MTProto](https://img.shields.io/badge/Upload%20Limit-2%20GB%20(MTProto)-7928CA?logo=speedtest&logoColor=white)
+![Engine](https://img.shields.io/badge/Engine-yt--dlp%20%2B%20GraphQL-FF4500?logo=youtube&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Ready-0db7ed?logo=docker&logoColor=white)
 
 [بررسی اجمالی](#بررسی-اجمالی) •
 [حالت‌های کاری](#حالت‌های-کاری) •
@@ -167,9 +170,9 @@ cp .env.example .env
 
 ```env
 # تنظیمات ربات تلگرام (الزامی)
-BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRstuvWXyz
-API_ID=12345678
-API_HASH=0123456789abcdef0123456789abcdef
+BOT_TOKEN=your_bot_token_here
+API_ID=your_api_id_here
+API_HASH=your_api_hash_here
 
 # کنترل دسترسی
 IS_PRIVATE=true
