@@ -11,7 +11,7 @@
 ![Telegram](https://img.shields.io/badge/Telegram-aiogram%203-24A1DE?logo=telegram&logoColor=white)
 ![MTProto](https://img.shields.io/badge/Upload%20Limit-2%20GB%20(MTProto)-7928CA?logo=speedtest&logoColor=white)
 ![Engine](https://img.shields.io/badge/Engine-yt--dlp%20%2B%20GraphQL-FF4500?logo=youtube&logoColor=white)
-[![CodeFactor](https://www.codefactor.io/repository/github/2dust/v2rayng/badge)](https://www.codefactor.io/repository/github/2dust/v2rayng)
+[![CodeFactor](https://www.codefactor.io/repository/github/themrvx/x2t/badge)](https://www.codefactor.io/repository/github/themrvx/x2t)
 ![Docker](https://img.shields.io/badge/Docker-Ready-0db7ed?logo=docker&logoColor=white)
 
 [Overview](#overview) •
