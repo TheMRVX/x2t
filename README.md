@@ -1,205 +1,265 @@
-# x2t (X-to-Telegram Media Engine & Bot)
+# x2t
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Built%20with-Google%20Antigravity-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="Built with Antigravity" />
-</p>
+دانلود مدیا از توییتر (X) و ارسال به تلگرام — با پشتیبانی از آپلود تا ۲ گیگابایت.
 
-<p align="center">
-  <a href="README.md">English Documentation</a> •
-  <a href="README_FA.md">راهنمای فارسی</a>
-</p>
-
-> High-Performance, Zero-Third-Party Twitter / X Media Extractor, Advanced Profile Scraper, and MTProto Telegram Bot (up to 2000 MB / 2 GB direct uploads) — Built with Google Antigravity.
-
-`x2t` is a modular, high-reliability Python engine and Telegram bot built to extract, download, and deliver media assets (Full HD/4K videos, original resolution photos, and looping GIFs) from any X/Twitter post or entire user profile with granular attribution filtering and real-time streaming delivery.
+[English](#english) • [فارسی](#فارسی)
 
 ---
 
-## Features
+## English
 
-- **MTProto 2000 MB (2 GB) File Delivery:** Integrated native MTProto client (`Pyrogram` + `TgCrypto`) allowing high-speed direct Telegram uploads up to 2 GB per file, bypassing the standard 50 MB HTTP Bot API limit.
-- **Advanced Profile Downloader:** Enter any username or profile URL to scan and download the user's entire timeline linearly with multi-page cursor pagination.
-- **Granular Content & Attribution Filtering:**
-  - **Retweet / Repost Filter:** Exclude retweets by default so only original content is downloaded.
-  - **Third-Party Sourced Media Filter (`From @other`):** Exclude tweets embedding another creator's video.
-  - **Quote Tweet Filter:** Exclude quoted posts embedding secondary media.
-  - **Media Type Selector:** Selectively toggle Videos, Photos, or GIFs independently.
-  - **Batch Limits:** Customizable count (Unlimited, 10, 25, 50, 100 posts).
-- **Interactive Telegram UI & Pinned Progress:**
-  - Real-time inline checkbox toggles.
-  - Progress card pinned to the top of the chat with live post/file counters and a Stop / Cancel control.
-- **NSFW & Sensitive Content Resolution:** Custom resolver backend with persistent cookie management (`/set_cookie`) to unlock age-restricted and sensitive media.
-- **Multi-Media Albums (MediaGroups):** Automatically bundles multi-photo/video tweets into clean native Telegram albums.
-- **In-Memory TTL Caching:** Smart 5-minute cache avoids duplicate API requests and prevents Twitter rate limits.
-- **Automated Storage Cleanup:** Downloaded temporary media files are automatically purged from disk immediately after delivery.
-- **SQLite Database (WAL Mode) & Admin Dashboard:** Persistent async database with WAL concurrency, download history tracking, `/stats`, `/history`, and `/broadcast` admin tools.
+### What is x2t?
 
----
+x2t is a Python tool that downloads videos, photos, and GIFs from Twitter/X posts and sends them to Telegram. It works as a Telegram bot, a CLI tool, or a Python library.
 
-## Architecture
+The key difference from similar tools: x2t uses Telegram's MTProto protocol (via Pyrogram) for uploads, which means it can send files up to **2 GB** — bypassing Telegram Bot API's 50 MB limit.
 
-```mermaid
-flowchart TD
-    User["Telegram User or CLI Client"] --> InputRouter{"Input Type?"}
-    
-    %% Single Tweet Pipeline
-    InputRouter -->|"Single Tweet URL / ID"| Extractor["x2t Multi-Backend Extractor"]
-    subgraph Resolvers ["Extraction Resolvers"]
-        R1["FxTwitter / VxTwitter Backend (NSFW & 1080p)"]
-        R2["yt-dlp Native Backend (Highest Bitrate)"]
-        R3["Twitter Syndication CDN Fallback"]
-    end
-    Extractor --> Resolvers
-    Resolvers --> Downloader["Parallel Media Downloader (HLS & Direct MP4)"]
-    Downloader --> MTProtoSend["MTProto Pyrogram Client (Up to 2GB)"]
-    
-    %% Profile Pipeline
-    InputRouter -->|"@username or Profile URL"| ProfileEngine["Profile Extractor Engine"]
-    ProfileEngine --> InteractiveMenu["Interactive Inline Checkbox Menu (Telegram)"]
-    InteractiveMenu --> UserChoice["User Configures Toggles (RT, Sources, Formats)"]
-    UserChoice --> StreamWorker["Streaming Batch Worker (Cursor Pagination)"]
-    StreamWorker --> PinMsg["Pin Live Progress Message in Chat"]
-    StreamWorker --> Downloader
-```
+### Features
 
----
+**Media Extraction**
+- Downloads videos (up to 4K), photos (original resolution), and GIFs from any tweet
+- Multi-backend extraction: tries FxTwitter, yt-dlp, Twitter GraphQL, and Syndication CDN as fallbacks
+- Handles NSFW/age-restricted content with Twitter auth cookie support
 
-## Installation & Setup
+**Profile Downloader**
+- Downloads media from an entire user's timeline
+- Cursor-based pagination for fetching all posts
+- Filters: exclude retweets, quote tweets, third-party media (`From @other`), select media types
+- Configurable limits: unlimited, or 10/25/50/100 posts
 
-### 1. Prerequisites
-- Python 3.10+
-- FFmpeg installed on your system (`sudo apt install ffmpeg`)
+**Telegram Bot**
+- Interactive inline menus with checkbox toggles for profile filters
+- Live progress message pinned to chat with post/file counters and stop button
+- Multi-photo/video tweets sent as native Telegram albums
+- Private/public access mode with user allowlisting
+- Admin dashboard: `/stats`, `/broadcast`, `/history`
 
-### 2. Clone Repository & Install
+**Technical**
+- Async architecture with `aiogram` + `Pyrogram`
+- SQLite (WAL mode) for download history and user tracking
+- In-memory TTL cache (5 min) to avoid duplicate API requests
+- Auto-cleanup of temp files after delivery
+
+### Quick Start
+
+**Requirements:** Python 3.10+, FFmpeg
+
 ```bash
 git clone https://github.com/TheMRVX/x2t.git
 cd x2t
-
 pip install -e .
 ```
 
-### 3. Environment Configuration
-Create a `.env` file from the template:
+Copy and edit the config:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your credentials:
 ```env
-# Telegram Bot Configuration
-BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRstuvWXyz
-API_ID=your_api_id_here
-API_HASH=your_api_hash_here
+BOT_TOKEN=your_bot_token
+API_ID=your_api_id          # from my.telegram.org
+API_HASH=your_api_hash      # from my.telegram.org
 
-# Access Control: true = Private mode (Admin/allowed only), false = Public
-IS_PRIVATE=true
+IS_PRIVATE=true              # true = only allowed users, false = public
 ADMIN_IDS=[123456789]
 ALLOWED_USER_IDS=[]
 
-DB_PATH=bot_database.sqlite3
-TEMP_DOWNLOAD_DIR=./downloads/temp_bot
-RATE_LIMIT_SECONDS=1.0
-
-# Optional: Twitter Auth Token for NSFW / Age-Restricted Profile Timelines
-TWITTER_AUTH_TOKEN=your_auth_token_here
-
-# Optional: Clean Caption Mode (true = raw post text only without author or buttons)
-CLEAN_CAPTION=true
+# Optional
+TWITTER_AUTH_TOKEN=           # for NSFW content
+CLEAN_CAPTION=true            # minimal captions without author info
 ```
 
----
+### Usage
 
-## Running the Telegram Bot
-
-### Direct Execution
+**Telegram Bot:**
 ```bash
 python -m x2t.bot.main
 ```
 
-### Docker Compose (Production)
+**Docker:**
 ```bash
 docker compose up -d --build
+docker compose logs -f    # view logs
 ```
 
-View live logs:
+**CLI:**
 ```bash
-docker compose logs -f
+# Extract media info (no download)
+x2t "https://x.com/user/status/123"
+
+# Download media files
+x2t "https://x.com/user/status/123" --download --output ./media
+
+# JSON output
+x2t "https://x.com/user/status/123" --json
 ```
 
----
+**Python SDK:**
+```python
+import x2t
 
-## CLI Usage
+# Extract metadata
+result = x2t.extract_media("https://x.com/user/status/123")
+for item in result.items:
+    print(f"{item.type}: {item.resolution} → {item.url}")
 
-Extract or download tweets directly from the command line:
+# Download files
+result = x2t.download_media("https://x.com/user/status/123", output_dir="./downloads")
 
-```bash
-# 1. Inspect tweet media links and metadata (without downloading)
-x2t "https://x.com/username/status/1234567890"
-
-# 2. Extract and download all media files to disk
-x2t "https://x.com/username/status/1234567890" --download --output ./my_downloads
-
-# 3. Output clean JSON metadata
-x2t "https://x.com/username/status/1234567890" --json
+# Async download
+result = await x2t.download_media_async("https://x.com/user/status/123")
 ```
 
----
-
-## Python Library SDK
-
-Use `x2t` as a standalone Python package:
-
+**Profile streaming:**
 ```python
 import asyncio
-import x2t
+from x2t.core.profile_extractor import profile_extractor
 from x2t.models import ProfileFilterOptions
 
-# --- Single Tweet Extraction ---
-result = x2t.extract_media("https://x.com/username/status/1234567890")
-print(f"Author: {result.author_name} (@{result.author_username})")
-print(f"Media Count: {result.media_count}")
-for item in result.items:
-    print(f" - {item.type}: {item.resolution} -> {item.url}")
-
-# --- Single Tweet Download ---
-downloaded = x2t.download_media("https://x.com/username/status/1234567890", output_dir="./downloads")
-for item in downloaded.items:
-    print(f"Downloaded to: {item.local_path} ({item.size_bytes} bytes)")
-
-# --- Advanced Profile Streaming ---
-async def stream_profile():
-    from x2t.core.profile_extractor import profile_extractor
-    
+async def main():
     options = ProfileFilterOptions(
         include_videos=True,
         include_photos=True,
-        include_retweets=False,        # Exclude retweets
-        include_sourced_media=False,   # Exclude 'From @other' videos
-        include_quotes=False,          # Exclude quote tweets
-        limit=0,                       # 0 = Unlimited streaming
+        include_retweets=False,
+        include_sourced_media=False,
+        limit=50,
     )
-    
     async for post in profile_extractor.iter_profile_media_tweets_stream("NASA", options):
-        print(f"Found Post {post.tweet_id} with {len(post.media_items)} media items.")
+        print(f"Tweet {post.tweet_id}: {len(post.media_items)} media items")
 
-asyncio.run(stream_profile())
+asyncio.run(main())
 ```
+
+### Bot Commands
+
+| Command | Access | Description |
+|---------|--------|-------------|
+| `/start` | All | Welcome and instructions |
+| `/help` | All | Usage guide |
+| `/history` | All | Recent 5 downloads |
+| `/about` | All | Version info |
+| `/mode [private/public]` | Admin | Toggle access mode |
+| `/caption [clean/full]` | Admin | Toggle caption style |
+| `/stats` | Admin | User/download statistics |
+| `/allow <id>` | Admin | Whitelist a user |
+| `/disallow <id>` | Admin | Remove a user |
+| `/set_cookie <token>` | Admin | Set Twitter auth for NSFW |
+| `/broadcast <msg>` | Admin | Message all users |
+
+### Architecture
+
+```
+x2t/
+├── __init__.py          # Public API (extract_media, download_media, etc.)
+├── __main__.py          # CLI entry point
+├── config.py            # Settings (Pydantic)
+├── models.py            # Data models (MediaItem, PostMediaResult, etc.)
+├── exceptions.py        # Error hierarchy
+├── logger.py            # Logging setup (Rich)
+├── core/                # Extraction backends & downloader
+├── bot/                 # Telegram bot (aiogram + Pyrogram)
+└── utils/               # Helpers
+```
+
+Extraction pipeline:
+
+```
+Tweet URL → FxTwitter → yt-dlp → GraphQL → Syndication CDN → Download → Telegram MTProto
+                ↓ (if fails)  ↓ (if fails)  ↓ (if fails)
+              fallback      fallback       fallback
+```
+
+### License
+
+AGPL-3.0 — see [LICENSE](LICENSE).
 
 ---
 
-## Bot Commands & Admin Controls
+## فارسی
 
-| Command | Role | Description |
-| :--- | :---: | :--- |
-| `/start` | User | Welcome screen, bot feature overview, and instructions. |
-| `/history` | User | View recent 5 downloaded tweets with direct post links. |
-| `/help` | User | Usage guide and troubleshooting tips. |
-| `/about` | User | Version, architecture, and technology stack information. |
-| `/mode [private/public]` | Admin | View or dynamically toggle between Private and Public access mode. |
-| `/caption [clean/full]` | Admin | View or toggle clean minimal caption mode (only post text without author or buttons). |
-| `/stats` | Admin | Total registered users, total downloads, 24h active users, and token health. |
-| `/allow <user_id>` | Admin | Authorize a specific Telegram User ID when in Private mode. |
-| `/disallow <user_id>` | Admin | Revoke access for a specific Telegram User ID. |
-| `/set_cookie <auth_token>` | Admin | Dynamically set or update Twitter `auth_token` for NSFW timelines. |
-| `/broadcast <message>` | Admin | Broadcast an announcement message to all registered users. |
+### x2t چیست؟
+
+x2t یک ابزار پایتونی برای دانلود ویدیو، عکس و گیف از توییتر/X و ارسال مستقیم به تلگرام است. هم به عنوان ربات تلگرام، هم از خط فرمان (CLI) و هم به عنوان کتابخانه پایتون قابل استفاده‌ست.
+
+تفاوت اصلی با ابزارهای مشابه: x2t از پروتکل MTProto تلگرام (از طریق Pyrogram) استفاده می‌کنه، یعنی فایل‌های تا **۲ گیگابایت** رو مستقیم آپلود می‌کنه — بدون محدودیت ۵۰ مگابایتی Bot API.
+
+### امکانات
+
+- دانلود ویدیو (تا 4K)، عکس (رزولوشن اصلی) و گیف از هر توییت
+- استخراج چندلایه: FxTwitter → yt-dlp → GraphQL → Syndication CDN
+- پشتیبانی از محتوای NSFW با کوکی توییتر
+- دانلود کل تایم‌لاین پروفایل با فیلتر ریتوییت، کوت‌توییت، مدیای شخص ثالث
+- منوی اینلاین با چک‌باکس برای تنظیم فیلترها
+- پیام وضعیت پین‌شده با شمارنده زنده و دکمه توقف
+- ارسال آلبومی پست‌های چندرسانه‌ای
+- حالت عمومی/خصوصی با لیست مجاز کاربران
+- پنل ادمین: آمار، پیام همگانی، تاریخچه
+
+### نصب سریع
+
+**پیش‌نیازها:** Python 3.10+, FFmpeg
+
+```bash
+git clone https://github.com/TheMRVX/x2t.git
+cd x2t
+pip install -e .
+cp .env.example .env
+# فایل .env رو ویرایش کنید
+```
+
+### اجرا
+
+```bash
+# ربات تلگرام
+python -m x2t.bot.main
+
+# داکر
+docker compose up -d --build
+```
+
+### خط فرمان (CLI)
+
+```bash
+# فقط اطلاعات مدیا
+x2t "https://x.com/user/status/123"
+
+# دانلود فایل‌ها
+x2t "https://x.com/user/status/123" --download --output ./media
+
+# خروجی JSON
+x2t "https://x.com/user/status/123" --json
+```
+
+### استفاده در پایتون
+
+```python
+import x2t
+
+result = x2t.extract_media("https://x.com/user/status/123")
+for item in result.items:
+    print(f"{item.type}: {item.url}")
+
+# دانلود
+result = x2t.download_media("https://x.com/user/status/123", output_dir="./downloads")
+```
+
+### دستورات ربات
+
+| دستور | دسترسی | توضیح |
+|-------|--------|-------|
+| `/start` | همه | خوش‌آمد و راهنما |
+| `/help` | همه | راهنمای استفاده |
+| `/history` | همه | ۵ دانلود اخیر |
+| `/about` | همه | اطلاعات نسخه |
+| `/mode` | ادمین | تغییر حالت دسترسی |
+| `/caption` | ادمین | تغییر استایل کپشن |
+| `/stats` | ادمین | آمار کاربران و دانلودها |
+| `/allow <id>` | ادمین | اضافه کردن کاربر مجاز |
+| `/disallow <id>` | ادمین | حذف کاربر مجاز |
+| `/set_cookie <token>` | ادمین | تنظیم کوکی توییتر |
+| `/broadcast <msg>` | ادمین | ارسال پیام به همه |
+
+### لایسنس
+
+AGPL-3.0 — فایل [LICENSE](LICENSE) رو ببینید.
